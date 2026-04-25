@@ -614,3 +614,18 @@ body.no-scroll{ overflow: hidden; height: 100vh; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
+
+/* ===== boot overlay (Phase 2) ===== */
+.boot-overlay{
+  position:fixed; inset:0; z-index:9999;
+  background:#0c0c0c;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:18px;
+  transition:opacity .25s ease, visibility .25s ease;
+}
+.boot-overlay[aria-hidden="true"]{ opacity:0; visibility:hidden; pointer-events:none; }
+.boot-overlay__logo{ width:120px; height:auto; opacity:.92; }
+.boot-overlay__msg{
+  font-family:"FjallaOne", system-ui, sans-serif;
+  color:#f1f1f1; font-size:18px; letter-spacing:.5px; margin:0;
+}
