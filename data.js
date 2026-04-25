@@ -182,4 +182,8 @@ const CATEGORIES = [
   ]}
 ];
 
-window.SHIFT_DATA = { LIFELINES, DIFFICULTIES, CATEGORIES };
+// Phase 2: data.js is now a *fallback*. lib/content.js is the live loader.
+// We expose the payload under __SHIFT_FALLBACK so lib/content.js can read it,
+// and *also* keep the legacy global so opening the file directly still works.
+window.__SHIFT_FALLBACK = { LIFELINES, DIFFICULTIES, CATEGORIES };
+if (!window.SHIFT_DATA) window.SHIFT_DATA = window.__SHIFT_FALLBACK;
