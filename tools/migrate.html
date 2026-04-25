@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Migrate data.js → Supabase</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+    button { font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #log { background: #111; color: #0f0; padding: 12px; border-radius: 8px; height: 280px; overflow: auto; font-family: ui-monospace, monospace; font-size: 13px; white-space: pre-wrap; }
+    .row { margin: 12px 0; display: flex; gap: 8px; align-items: center; }
+    input[type=email] { flex: 1; padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
+    .ok { color: #0a7; } .bad { color: #c33; }
+  </style>
+</head>
+<body>
+<h1>Migrate <code>data.js</code> → Supabase</h1>
+<p>Run this once after the schema is set up and you're added to <code>admins</code>.</p>
+
+<div class="row" id="signinRow">
+  <input id="email" type="email" placeholder="your-email@example.com" />
+  <button id="signin">Send magic link</button>
+</div>
+
+<div id="status" class="row"></div>
+
+<div class="row">
+  <button id="migrate" disabled>Run migration</button>
+  <button id="signout" disabled>Sign out</button>
+</div>
+
+<pre id="log"></pre>
+
+<!-- Load the legacy data so window.SHIFT_DATA is available. -->
+<script src="../data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../lib/supabase.js"></script>
+<script src="./migrate.js"></script>
+</body>
+</html>
