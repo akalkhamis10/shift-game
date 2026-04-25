@@ -52,21 +52,97 @@
       </p>
     </section>
 
-    <!-- authorized (Phase 3 placeholder; Phase 4 fills this in) -->
-    <section class="adm-card adm-card--ok" data-show="authorized">
-      <h1 class="adm-h">أهلاً بك 👋</h1>
-      <p class="adm-sub">سيتم تفعيل تحرير الفئات والأسئلة في المرحلة القادمة.</p>
-      <div class="adm-stub">
-        <strong>قادم في المرحلة 4:</strong>
-        <ul>
-          <li>إدارة الأقسام والفئات</li>
-          <li>تحرير الأسئلة والإجابات</li>
-          <li>رفع صور وفيديو وصوت</li>
-        </ul>
+    <!-- authorized — Phase 4 dashboard -->
+    <section class="adm-dash" data-show="authorized" data-tab="sections">
+
+      <!-- Tab bar -->
+      <nav class="adm-tabs" role="tablist" aria-label="أقسام لوحة الإدارة">
+        <button class="adm-tab" data-tab-target="sections"   role="tab" aria-selected="true">الأقسام</button>
+        <button class="adm-tab" data-tab-target="categories" role="tab" aria-selected="false">الفئات</button>
+        <button class="adm-tab" data-tab-target="questions"  role="tab" aria-selected="false">الأسئلة</button>
+      </nav>
+
+      <!-- Sections panel -->
+      <div class="adm-panel" data-tab-panel="sections" role="tabpanel">
+        <div class="adm-toolbar">
+          <button class="btn btn--primary" id="admAddSection">+ إضافة قسم</button>
+        </div>
+        <table class="adm-table">
+          <thead><tr><th>الاسم</th><th>عدد الفئات</th><th></th></tr></thead>
+          <tbody id="admSectionsBody"><tr class="adm-empty"><td colspan="3">جاري التحميل…</td></tr></tbody>
+        </table>
       </div>
+
+      <!-- Categories panel -->
+      <div class="adm-panel" data-tab-panel="categories" role="tabpanel" hidden>
+        <div class="adm-toolbar">
+          <label class="adm-filter">
+            <span>القسم:</span>
+            <select id="admCatFilterSection"><option value="">الكل</option></select>
+          </label>
+          <button class="btn btn--primary" id="admAddCategory">+ إضافة فئة</button>
+        </div>
+        <table class="adm-table">
+          <thead><tr><th>القسم</th><th>الفئة</th><th>الأيقونة</th><th>عدد الأسئلة</th><th></th></tr></thead>
+          <tbody id="admCategoriesBody"><tr class="adm-empty"><td colspan="5">جاري التحميل…</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- Questions panel -->
+      <div class="adm-panel" data-tab-panel="questions" role="tabpanel" hidden>
+        <div class="adm-toolbar">
+          <label class="adm-filter">
+            <span>القسم:</span>
+            <select id="admQFilterSection"><option value="">الكل</option></select>
+          </label>
+          <label class="adm-filter">
+            <span>الفئة:</span>
+            <select id="admQFilterCategory"><option value="">الكل</option></select>
+          </label>
+          <button class="btn btn--primary" id="admAddQuestion">+ إضافة سؤال</button>
+        </div>
+        <table class="adm-table">
+          <thead><tr><th>الفئة</th><th>المستوى</th><th>السؤال</th><th></th></tr></thead>
+          <tbody id="admQuestionsBody"><tr class="adm-empty"><td colspan="4">جاري التحميل…</td></tr></tbody>
+        </table>
+      </div>
+
     </section>
 
   </main>
+
+    <!-- Shared edit dialog (sections / categories / questions) -->
+    <dialog class="adm-modal" id="admModal" aria-labelledby="admModalTitle">
+      <form method="dialog" id="admModalForm">
+        <header class="adm-modal__head">
+          <h2 class="adm-modal__title" id="admModalTitle">—</h2>
+          <button type="button" class="adm-modal__close" id="admModalClose" aria-label="إغلاق">×</button>
+        </header>
+        <div class="adm-modal__body" id="admModalBody"><!-- form fields injected by admin.js --></div>
+        <p class="adm-modal__status" id="admModalStatus" role="status" aria-live="polite"></p>
+        <footer class="adm-modal__foot">
+          <button type="button" class="btn" id="admModalCancel">إلغاء</button>
+          <button type="submit" class="btn btn--primary" id="admModalSave">حفظ</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- Shared confirm dialog -->
+    <dialog class="adm-modal adm-modal--confirm" id="admConfirm" aria-labelledby="admConfirmTitle">
+      <form method="dialog">
+        <header class="adm-modal__head">
+          <h2 class="adm-modal__title" id="admConfirmTitle">—</h2>
+        </header>
+        <div class="adm-modal__body" id="admConfirmBody">—</div>
+        <footer class="adm-modal__foot">
+          <button type="button" class="btn" id="admConfirmCancel">إلغاء</button>
+          <button type="submit" class="btn adm-danger" id="admConfirmOk">حذف</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- Toasts -->
+    <div class="adm-toasts" id="admToasts" aria-live="polite" aria-atomic="false"></div>
 
   <!-- Supabase SDK + project client (same as game) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
