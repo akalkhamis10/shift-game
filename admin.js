@@ -89,4 +89,166 @@
     evaluate();
   });
   setTimeout(() => { if (!initialSessionSeen) evaluate(); }, 1500);
+
+  /* ============================================================
+   * Phase 4 — dashboard (tabs / table / modal / toast helpers)
+   * ============================================================ */
+
+  const dash = document.querySelector(".adm-dash");
+
+  // ---- toasts ----
+  function toast(msg, kind /* 'ok' | 'bad' | undefined */){
+    const wrap = $("admToasts");
+    if (!wrap) return;
+    const el = document.createElement("div");
+    el.className = "adm-toast" + (kind ? ` adm-toast--${kind}` : "");
+    el.textContent = msg;
+    wrap.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  // ---- modal ----
+  // openEditModal({ title, fields, initial, onSave })
+  //   fields: array of { name, label, type ('text'|'textarea'|'select'|'number'), required?, options? }
+  //   initial: { name: value }
+  //   onSave: async (values) => void  — throw to keep open + render error
+  function openEditModal({ title, fields, initial = {}, onSave }){
+    const dlg = $("admModal");
+    const body = $("admModalBody");
+    const status = $("admModalStatus");
+    const form = $("admModalForm");
+
+    $("admModalTitle").textContent = title;
+    status.textContent = ""; status.classList.remove("is-bad","is-ok");
+    body.innerHTML = "";
+
+    for (const f of fields){
+      const wrap = document.createElement("div");
+      wrap.className = "adm-field";
+      const id = `admField_${f.name}`;
+      let control;
+      if (f.type === "textarea"){
+        control = document.createElement("textarea");
+      } else if (f.type === "select"){
+        control = document.createElement("select");
+        for (const opt of (f.options || [])){
+          const o = document.createElement("option");
+          o.value = opt.value;
+          o.textContent = opt.label;
+          control.appendChild(o);
+        }
+      } else {
+        control = document.createElement("input");
+        control.type = (f.type === "number") ? "number" : "text";
+      }
+      control.id = id;
+      control.name = f.name;
+      if (f.required) control.required = true;
+      const v = initial[f.name];
+      if (v !== undefined && v !== null) control.value = v;
+
+      const label = document.createElement("label");
+      label.htmlFor = id;
+      label.textContent = f.label;
+
+      wrap.appendChild(label);
+      wrap.appendChild(control);
+      body.appendChild(wrap);
+    }
+
+    // Submit handler — fresh per opening so closures over `onSave` are correct.
+    function onSubmit(e){
+      e.preventDefault();
+      const values = {};
+      for (const f of fields){
+        const el = document.getElementById(`admField_${f.name}`);
+        let val = el.value;
+        if (f.type === "number") val = (val === "") ? null : Number(val);
+        if (val === "" && !f.required) val = null;
+        values[f.name] = val;
+      }
+      const saveBtn = $("admModalSave");
+      saveBtn.disabled = true;
+      status.textContent = "جاري الحفظ…";
+      status.classList.remove("is-bad","is-ok");
+      onSave(values)
+        .then(() => { dlg.close(); toast("تم الحفظ", "ok"); })
+        .catch(err => {
+          status.textContent = `خطأ: ${err.message || err}`;
+          status.classList.add("is-bad");
+        })
+        .finally(() => { saveBtn.disabled = false; });
+    }
+    form.onsubmit = onSubmit;
+    $("admModalCancel").onclick = () => dlg.close();
+    $("admModalClose").onclick  = () => dlg.close();
+
+    dlg.showModal();
+  }
+
+  // openConfirm({ title, body, danger?, onConfirm })
+  function openConfirm({ title, body, danger = true, onConfirm }){
+    const dlg = $("admConfirm");
+    $("admConfirmTitle").textContent = title;
+    $("admConfirmBody").textContent = body;
+    const ok = $("admConfirmOk");
+    ok.classList.toggle("adm-danger", !!danger);
+    ok.textContent = danger ? "حذف" : "تأكيد";
+    const cancel = $("admConfirmCancel");
+
+    function cleanup(){
+      ok.onclick = null;
+      cancel.onclick = null;
+    }
+    ok.onclick = (e) => {
+      e.preventDefault();
+      ok.disabled = true;
+      Promise.resolve()
+        .then(() => onConfirm())
+        .then(() => { dlg.close(); toast("تم الحذف", "ok"); })
+        .catch(err => { toast(`خطأ: ${err.message || err}`, "bad"); dlg.close(); })
+        .finally(() => { ok.disabled = false; cleanup(); });
+    };
+    cancel.onclick = (e) => { e.preventDefault(); dlg.close(); cleanup(); };
+    dlg.showModal();
+  }
+
+  // ---- tabs ----
+  function setActiveTab(name){
+    if (!dash) return;
+    dash.setAttribute("data-tab", name);
+    for (const btn of document.querySelectorAll(".adm-tab")){
+      btn.setAttribute("aria-selected", btn.dataset.tabTarget === name ? "true" : "false");
+    }
+    if (name === "sections")    renderSectionsTab();
+    if (name === "categories")  renderCategoriesTab();
+    if (name === "questions")   renderQuestionsTab();
+  }
+
+  document.querySelectorAll(".adm-tab").forEach(btn => {
+    btn.addEventListener("click", () => setActiveTab(btn.dataset.tabTarget));
+  });
+
+  // Re-render the dashboard whenever the user lands on the authorized state.
+  // We hook this on top of the existing evaluate() flow by observing data-state.
+  const stateObserver = new MutationObserver(() => {
+    if (document.body.getAttribute("data-state") === "authorized"){
+      setActiveTab(dash?.getAttribute("data-tab") || "sections");
+    }
+  });
+  stateObserver.observe(document.body, { attributes: true, attributeFilter: ["data-state"] });
+
+  // ---- entity caches (kept in module scope so cross-tab pickers don't refetch) ----
+  const cache = { sections: null, categories: null, questions: null };
+  async function refreshSections(){ cache.sections = await window.SHIFT_SB.db.listAll("sections", { order: [{ col: "order_index" }, { col: "name" }] }); return cache.sections; }
+  async function refreshCategories(){ cache.categories = await window.SHIFT_SB.db.listAll("categories", { order: [{ col: "order_index" }, { col: "name" }] }); return cache.categories; }
+  async function refreshQuestions(opts){ cache.questions = await window.SHIFT_SB.db.listAll("questions", opts); return cache.questions; }
+
+  // Stubs filled by Tasks 6/7/8 — defined now so setActiveTab() can call them safely.
+  async function renderSectionsTab(){}
+  async function renderCategoriesTab(){}
+  async function renderQuestionsTab(){}
+  // Replaced below by the real implementations (later patches assign to these names via
+  // re-declaration at the bottom of the IIFE).
+
 })();
