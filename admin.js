@@ -244,8 +244,186 @@
   async function refreshCategories(){ cache.categories = await window.SHIFT_SB.db.listAll("categories", { order: [{ col: "order_index" }, { col: "name" }] }); return cache.categories; }
   async function refreshQuestions(opts){ cache.questions = await window.SHIFT_SB.db.listAll("questions", opts); return cache.questions; }
 
-  // Stub filled by Task 8 — defined now so setActiveTab() can call it safely.
-  async function renderQuestionsTab(){}
+  /* ============================================================
+   * Questions tab
+   * ============================================================ */
+
+  function refreshQFilterDropdowns(){
+    const sectionSel = $("admQFilterSection");
+    const catSel     = $("admQFilterCategory");
+    const curSection = sectionSel.value;
+    const curCat     = catSel.value;
+
+    sectionSel.innerHTML = `<option value="">الكل</option>`;
+    for (const s of (cache.sections || [])){
+      const o = document.createElement("option");
+      o.value = s.id; o.textContent = s.name;
+      sectionSel.appendChild(o);
+    }
+    sectionSel.value = curSection || "";
+
+    catSel.innerHTML = `<option value="">الكل</option>`;
+    const filteredCats = curSection
+      ? (cache.categories || []).filter(c => c.section_id === curSection)
+      : (cache.categories || []);
+    for (const c of filteredCats){
+      const o = document.createElement("option");
+      o.value = c.id; o.textContent = c.name;
+      catSel.appendChild(o);
+    }
+    catSel.value = curCat && filteredCats.some(c => c.id === curCat) ? curCat : "";
+  }
+
+  const DIFF_LABEL = { easy: "سهل", medium: "متوسط", hard: "صعب" };
+
+  async function renderQuestionsTab(){
+    const tbody = $("admQuestionsBody");
+    tbody.innerHTML = `<tr class="adm-empty"><td colspan="4">جاري التحميل…</td></tr>`;
+    try {
+      const [sections, categories] = await Promise.all([refreshSections(), refreshCategories()]);
+      refreshQFilterDropdowns();
+
+      const sectionFilter = $("admQFilterSection").value;
+      const catFilter     = $("admQFilterCategory").value;
+
+      const eq = {};
+      if (catFilter) eq.category_id = catFilter;
+
+      // If only a section is picked (no category), filter client-side via the cached category list.
+      const allowedCatIds = sectionFilter
+        ? new Set((categories || []).filter(c => c.section_id === sectionFilter).map(c => c.id))
+        : null;
+
+      const questions = await window.SHIFT_SB.db.listAll("questions", {
+        eq,
+        order: [{ col: "category_id" }, { col: "difficulty" }, { col: "order_index" }]
+      });
+      cache.questions = questions;
+
+      const list = allowedCatIds
+        ? questions.filter(q => allowedCatIds.has(q.category_id))
+        : questions;
+
+      const catsById = new Map(categories.map(c => [c.id, c]));
+
+      if (!list.length){
+        tbody.innerHTML = `<tr class="adm-empty"><td colspan="4">لا توجد أسئلة بهذه الشروط.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = "";
+      for (const q of list){
+        const cat = catsById.get(q.category_id);
+        const catLabel = cat ? cat.name : "—";
+        const diffPill = `<span class="adm-pill adm-pill--${q.difficulty}">${DIFF_LABEL[q.difficulty] || q.difficulty}</span>`;
+        const snippet = (q.prompt_text || "").slice(0, 80) + ((q.prompt_text || "").length > 80 ? "…" : "");
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHTML(catLabel)}</td>
+          <td>${diffPill}</td>
+          <td>${escapeHTML(snippet)}</td>
+          <td class="adm-row-actions">
+            <button class="btn" data-action="edit-question"   data-id="${q.id}">تعديل</button>
+            <button class="btn adm-danger" data-action="delete-question" data-id="${q.id}">حذف</button>
+          </td>`;
+        tbody.appendChild(tr);
+      }
+    } catch (err){
+      tbody.innerHTML = `<tr class="adm-empty"><td colspan="4">خطأ: ${escapeHTML(err.message || err)}</td></tr>`;
+    }
+  }
+
+  $("admQFilterSection").addEventListener("change", () => {
+    // Reset category filter when section changes; the dropdown rebuild below handles it.
+    $("admQFilterCategory").value = "";
+    renderQuestionsTab();
+  });
+  $("admQFilterCategory").addEventListener("change", () => renderQuestionsTab());
+
+  function questionFields(){
+    return [
+      { name: "category_id", label: "الفئة", type: "select", required: true,
+        options: (cache.categories || []).map(c => ({ value: c.id, label: c.name })) },
+      { name: "difficulty", label: "المستوى", type: "select", required: true,
+        options: [
+          { value: "easy",   label: "سهل" },
+          { value: "medium", label: "متوسط" },
+          { value: "hard",   label: "صعب" }
+        ] },
+      { name: "prompt_text", label: "نص السؤال",  type: "textarea", required: true },
+      { name: "answer_text", label: "نص الإجابة", type: "textarea", required: true },
+      { name: "order_index", label: "ترتيب العرض", type: "number" }
+    ];
+  }
+
+  $("admAddQuestion").addEventListener("click", () => {
+    if (!cache.categories?.length){
+      toast("أضف فئة واحدة على الأقل أولاً.", "bad");
+      return;
+    }
+    openEditModal({
+      title: "إضافة سؤال جديد",
+      fields: questionFields(),
+      initial: {
+        category_id: cache.categories[0].id,
+        difficulty:  "easy",
+        order_index: 0
+      },
+      onSave: async (values) => {
+        await window.SHIFT_SB.db.insertQuestion({
+          category_id:  values.category_id,
+          difficulty:   values.difficulty,
+          prompt_text:  values.prompt_text,
+          answer_text:  values.answer_text,
+          order_index:  values.order_index ?? 0
+        });
+        await renderQuestionsTab();
+      }
+    });
+  });
+
+  $("admQuestionsBody").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-action]");
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const row = (cache.questions || []).find(q => q.id === id);
+    if (!row) return;
+
+    if (btn.dataset.action === "edit-question"){
+      const snippet = (row.prompt_text || "").slice(0, 30) + ((row.prompt_text || "").length > 30 ? "…" : "");
+      openEditModal({
+        title: `تعديل سؤال: ${snippet || "—"}`,
+        fields: questionFields(),
+        initial: {
+          category_id: row.category_id,
+          difficulty:  row.difficulty,
+          prompt_text: row.prompt_text,
+          answer_text: row.answer_text,
+          order_index: row.order_index
+        },
+        onSave: async (values) => {
+          await window.SHIFT_SB.db.update("questions", id, {
+            category_id:  values.category_id,
+            difficulty:   values.difficulty,
+            prompt_text:  values.prompt_text,
+            answer_text:  values.answer_text,
+            order_index:  values.order_index ?? 0
+          });
+          await renderQuestionsTab();
+        }
+      });
+    } else if (btn.dataset.action === "delete-question"){
+      const snippet = (row.prompt_text || "").slice(0, 60);
+      openConfirm({
+        title: "حذف السؤال؟",
+        body: `سيُحذف السؤال "${snippet}…" نهائياً. لا يمكن التراجع.`,
+        danger: true,
+        onConfirm: async () => {
+          await window.SHIFT_SB.db.remove("questions", id);
+          await renderQuestionsTab();
+        }
+      });
+    }
+  });
 
   /* ============================================================
    * Categories tab
