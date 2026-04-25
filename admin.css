@@ -107,7 +107,9 @@ body[data-state="authorized"]     .adm-top { display: flex; }
 .adm-stub li { margin: 4px 0; }
 /* ===== Phase 4 dashboard ===== */
 
-/* Adjust the authorized card to be a wide dashboard instead of a centered card. */
+/* Adjust the authorized card to be a wide dashboard instead of a centered card.
+   Visibility is driven by [data-show="authorized"] + body[data-state] rules from
+   Phase 3 — don't set `display` here or the dashboard leaks into signed-out state. */
 .adm-dash {
   width: min(1200px, 96vw);
   margin: 24px auto;
@@ -116,7 +118,6 @@ body[data-state="authorized"]     .adm-top { display: flex; }
   border-radius: 16px;
   box-shadow: var(--adm-shadow);
   padding: 0;
-  display: flex;
   flex-direction: column;
 }
 
