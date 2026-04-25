@@ -295,6 +295,30 @@
     startTimer();
   }
 
+  function renderQMedia(target, type, url){
+    const el = document.getElementById(target);
+    if (!el) return;
+    el.innerHTML = "";
+    if (!type || type === "none" || !url){
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    if (type === "image"){
+      const img = document.createElement("img");
+      img.src = url; img.alt = "";
+      el.appendChild(img);
+    } else if (type === "video"){
+      const v = document.createElement("video");
+      v.src = url; v.controls = true; v.preload = "metadata";
+      el.appendChild(v);
+    } else if (type === "audio"){
+      const a = document.createElement("audio");
+      a.src = url; a.controls = true; a.preload = "metadata";
+      el.appendChild(a);
+    }
+  }
+
   function renderQuestion(){
     const cell = state.board[state.activeCellIndex];
     const diffLabel = { easy:"سهل", medium:"متوسط", hard:"صعب" }[cell.difficulty];
@@ -302,7 +326,9 @@
     $("#qDifficulty").textContent = diffLabel;
     $("#qPoints").textContent = `${cell.points} نقطة`;
     $("#qText").textContent = cell.q;
+    renderQMedia("qPromptMedia", cell.promptMediaType, cell.promptMediaUrl);
     $("#qAnswerText").textContent = cell.a;
+    renderQMedia("qAnswerMedia", cell.answerMediaType, cell.answerMediaUrl);
     $("#qAnswer").hidden = !state.answerRevealed;
     $("#qAward").hidden = !state.answerRevealed;
     $("#awardT1").textContent = `${state.teams[0].name} +${cell.points}`;

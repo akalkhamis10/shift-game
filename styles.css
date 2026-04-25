@@ -629,3 +629,24 @@ body.no-scroll{ overflow: hidden; height: 100vh; }
   font-family:"FjallaOne", system-ui, sans-serif;
   color:#f1f1f1; font-size:18px; letter-spacing:.5px; margin:0;
 }
+
+/* ===== Phase 5 in-game media ===== */
+
+.q-media {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 10px 0 0;
+}
+.q-media[hidden] { display: none; }
+.q-media img,
+.q-media video {
+  max-width: min(720px, 100%);
+  max-height: 360px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.10);
+  display: block;
+}
+.q-media audio {
+  width: min(420px, 100%);
+}
+.q-media--answer { margin-top: 8px; }
