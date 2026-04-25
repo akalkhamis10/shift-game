@@ -244,11 +244,108 @@
   async function refreshCategories(){ cache.categories = await window.SHIFT_SB.db.listAll("categories", { order: [{ col: "order_index" }, { col: "name" }] }); return cache.categories; }
   async function refreshQuestions(opts){ cache.questions = await window.SHIFT_SB.db.listAll("questions", opts); return cache.questions; }
 
-  // Stubs filled by Tasks 6/7/8 — defined now so setActiveTab() can call them safely.
-  async function renderSectionsTab(){}
+  // Stubs filled by Tasks 7/8 — defined now so setActiveTab() can call them safely.
   async function renderCategoriesTab(){}
   async function renderQuestionsTab(){}
-  // Replaced below by the real implementations (later patches assign to these names via
-  // re-declaration at the bottom of the IIFE).
+
+  /* ============================================================
+   * Sections tab
+   * ============================================================ */
+
+  async function renderSectionsTab(){
+    const tbody = $("admSectionsBody");
+    tbody.innerHTML = `<tr class="adm-empty"><td colspan="3">جاري التحميل…</td></tr>`;
+    try {
+      const [sections, categories] = await Promise.all([refreshSections(), refreshCategories()]);
+      const countBySection = new Map();
+      for (const c of categories){
+        countBySection.set(c.section_id, (countBySection.get(c.section_id) || 0) + 1);
+      }
+      if (!sections.length){
+        tbody.innerHTML = `<tr class="adm-empty"><td colspan="3">لا توجد أقسام بعد. اضغط "+ إضافة قسم".</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = "";
+      for (const s of sections){
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHTML(s.name)}</td>
+          <td>${countBySection.get(s.id) || 0}</td>
+          <td class="adm-row-actions">
+            <button class="btn" data-action="edit-section"   data-id="${s.id}">تعديل</button>
+            <button class="btn adm-danger" data-action="delete-section" data-id="${s.id}">حذف</button>
+          </td>`;
+        tbody.appendChild(tr);
+      }
+    } catch (err){
+      tbody.innerHTML = `<tr class="adm-empty"><td colspan="3">خطأ: ${escapeHTML(err.message || err)}</td></tr>`;
+    }
+  }
+
+  function escapeHTML(s){
+    return String(s ?? "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+    }[c]));
+  }
+
+  // Add section
+  $("admAddSection").addEventListener("click", () => {
+    openEditModal({
+      title: "إضافة قسم جديد",
+      fields: [
+        { name: "name", label: "اسم القسم", type: "text", required: true },
+        { name: "order_index", label: "ترتيب العرض", type: "number" }
+      ],
+      initial: { order_index: (cache.sections?.length ?? 0) },
+      onSave: async (values) => {
+        await window.SHIFT_SB.db.insertSection({
+          name: values.name,
+          order_index: values.order_index ?? 0
+        });
+        await renderSectionsTab();
+      }
+    });
+  });
+
+  // Edit / delete (event-delegated)
+  $("admSectionsBody").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-action]");
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const row = (cache.sections || []).find(s => s.id === id);
+    if (!row) return;
+
+    if (btn.dataset.action === "edit-section"){
+      openEditModal({
+        title: `تعديل قسم: ${row.name}`,
+        fields: [
+          { name: "name", label: "اسم القسم", type: "text", required: true },
+          { name: "order_index", label: "ترتيب العرض", type: "number" }
+        ],
+        initial: { name: row.name, order_index: row.order_index },
+        onSave: async (values) => {
+          await window.SHIFT_SB.db.update("sections", id, {
+            name: values.name,
+            order_index: values.order_index ?? 0
+          });
+          await renderSectionsTab();
+        }
+      });
+    } else if (btn.dataset.action === "delete-section"){
+      const cats = (cache.categories || []).filter(c => c.section_id === id);
+      const body = cats.length
+        ? `سيُحذف ${cats.length} فئة و كل أسئلتها مع هذا القسم. لا يمكن التراجع.`
+        : "سيُحذف هذا القسم نهائياً. لا يمكن التراجع.";
+      openConfirm({
+        title: `حذف القسم "${row.name}"؟`,
+        body,
+        danger: true,
+        onConfirm: async () => {
+          await window.SHIFT_SB.db.remove("sections", id);
+          await renderSectionsTab();
+        }
+      });
+    }
+  });
 
 })();
