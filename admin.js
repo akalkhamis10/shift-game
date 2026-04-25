@@ -731,6 +731,68 @@
   });
 
   /* ============================================================
+   * Media helpers (Phase 5)
+   * ============================================================ */
+
+  // Build the `initial` object for a media field, given a row's stored URL.
+  // We don't store `*_media_type` on sections/categories (they only have one
+  // media kind: image). For questions, pass the type explicitly.
+  function mediaInitial(url, type = "none"){
+    if (!url) return { type: "none", url: null, path: null };
+    return {
+      type,
+      url,
+      path: window.SHIFT_SB.storage.pathFromUrl(url)
+    };
+  }
+
+  // Apply a media field after a row is saved. Handles upload, replace, and clear.
+  // - entity: "sections" | "categories" | "questions"
+  // - id:     row id
+  // - slot:   "cover" | "image" | "prompt" | "answer"
+  // - column: column on the row to set, e.g. "cover_url" / "prompt_media_url"
+  // - typeColumn (optional): column for the type, e.g. "prompt_media_type"
+  //                         (sections/categories don't have one)
+  // - field:  the value coming out of openEditModal — { type, existingUrl, existingPath, file }
+  async function applyMedia({ entity, id, slot, column, typeColumn, field }){
+    if (!field) return;
+    const { storage, db } = window.SHIFT_SB;
+    const newType = field.type;
+    const file = field.file;
+
+    // Case A: type=none → delete existing object + null the columns.
+    if (newType === "none"){
+      const path = field.existingPath;
+      if (path){ await storage.deleteMedia(path); }
+      const patch = { [column]: null };
+      if (typeColumn) patch[typeColumn] = "none";
+      if (column !== null) await db.update(entity, id, patch);
+      return;
+    }
+
+    // Case B: a new file was picked → upload, then patch the row.
+    if (file){
+      const ext = storage.fileExtension(file);
+      const path = storage.entityMediaPath(entity, id, slot, ext);
+      // If there was an existing object at a *different* path, delete it.
+      if (field.existingPath && field.existingPath !== path){
+        await storage.deleteMedia(field.existingPath);
+      }
+      const { publicUrl } = await storage.uploadMedia(path, file);
+      const patch = { [column]: publicUrl };
+      if (typeColumn) patch[typeColumn] = newType;
+      await db.update(entity, id, patch);
+      return;
+    }
+
+    // Case C: same type, no new file. If the type column needs setting (e.g.,
+    // questions store an explicit type), make sure it's saved; otherwise no-op.
+    if (typeColumn && newType !== "none"){
+      await db.update(entity, id, { [typeColumn]: newType });
+    }
+  }
+
+  /* ============================================================
    * Sections tab
    * ============================================================ */
 
@@ -776,13 +838,21 @@
       title: "إضافة قسم جديد",
       fields: [
         { name: "name", label: "اسم القسم", type: "text", required: true },
-        { name: "order_index", label: "ترتيب العرض", type: "number" }
+        { name: "order_index", label: "ترتيب العرض", type: "number" },
+        { name: "cover", label: "صورة الغلاف", type: "media" }
       ],
       initial: { order_index: (cache.sections?.length ?? 0) },
       onSave: async (values) => {
-        await window.SHIFT_SB.db.insertSection({
+        const row = await window.SHIFT_SB.db.insertSection({
           name: values.name,
           order_index: values.order_index ?? 0
+        });
+        await applyMedia({
+          entity: "sections",
+          id: row.id,
+          slot: "cover",
+          column: "cover_url",
+          field: values.cover
         });
         await renderSectionsTab();
       }
@@ -802,13 +872,25 @@
         title: `تعديل قسم: ${row.name}`,
         fields: [
           { name: "name", label: "اسم القسم", type: "text", required: true },
-          { name: "order_index", label: "ترتيب العرض", type: "number" }
+          { name: "order_index", label: "ترتيب العرض", type: "number" },
+          { name: "cover", label: "صورة الغلاف", type: "media" }
         ],
-        initial: { name: row.name, order_index: row.order_index },
+        initial: {
+          name: row.name,
+          order_index: row.order_index,
+          cover: mediaInitial(row.cover_url, /* type stored on the row */ row.cover_url ? "image" : "none")
+        },
         onSave: async (values) => {
           await window.SHIFT_SB.db.update("sections", id, {
             name: values.name,
             order_index: values.order_index ?? 0
+          });
+          await applyMedia({
+            entity: "sections",
+            id,
+            slot: "cover",
+            column: "cover_url",
+            field: values.cover
           });
           await renderSectionsTab();
         }
