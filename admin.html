@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>SHIFT — لوحة الإدارة</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="admin.css" />
+<link rel="icon" href="assets/logo/shift-coral.png" />
+</head>
+<body data-state="pending">
+
+  <!-- Top bar (only visible in not-authorized + authorized states) -->
+  <header class="adm-top">
+    <img class="adm-top__logo" src="assets/logo/shift-coral.png" alt="SHIFT" />
+    <span class="adm-top__title">لوحة الإدارة</span>
+    <span class="adm-top__email" id="admEmail" aria-live="polite"></span>
+    <button class="btn btn--ghost" id="admSignOut">تسجيل خروج</button>
+  </header>
+
+  <main class="adm-main">
+
+    <!-- pending -->
+    <section class="adm-card adm-card--pending" data-show="pending">
+      <div class="adm-spinner" aria-hidden="true"></div>
+      <p class="adm-msg">جاري التحقق من الجلسة…</p>
+    </section>
+
+    <!-- signed-out -->
+    <section class="adm-card adm-card--signin" data-show="signed-out">
+      <h1 class="adm-h">تسجيل دخول الإدارة</h1>
+      <p class="adm-sub">سنرسل رابط دخول إلى بريدك الإلكتروني.</p>
+      <form id="admSigninForm" class="adm-form" novalidate>
+        <label class="adm-label" for="admEmailInput">البريد الإلكتروني</label>
+        <input class="adm-input" id="admEmailInput" type="email" inputmode="email"
+               autocomplete="email" placeholder="you@example.com" required />
+        <button class="btn btn--primary btn--xl" type="submit" id="admSendLink">
+          أرسل رابط الدخول
+        </button>
+      </form>
+      <p class="adm-status" id="admSigninStatus" role="status" aria-live="polite"></p>
+    </section>
+
+    <!-- not-authorized -->
+    <section class="adm-card adm-card--locked" data-show="not-authorized">
+      <div class="adm-lock" aria-hidden="true">🔒</div>
+      <h1 class="adm-h">حسابك غير مُصرَّح له</h1>
+      <p class="adm-sub">
+        تم تسجيل دخولك، لكن هذا البريد ليس على قائمة المسؤولين.
+        <br />
+        تواصل مع المالك لإضافتك، ثم أعد تسجيل الدخول.
+      </p>
+    </section>
+
+    <!-- authorized (Phase 3 placeholder; Phase 4 fills this in) -->
+    <section class="adm-card adm-card--ok" data-show="authorized">
+      <h1 class="adm-h">أهلاً بك 👋</h1>
+      <p class="adm-sub">سيتم تفعيل تحرير الفئات والأسئلة في المرحلة القادمة.</p>
+      <div class="adm-stub">
+        <strong>قادم في المرحلة 4:</strong>
+        <ul>
+          <li>إدارة الأقسام والفئات</li>
+          <li>تحرير الأسئلة والإجابات</li>
+          <li>رفع صور وفيديو وصوت</li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Supabase SDK + project client (same as game) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="lib/supabase.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
