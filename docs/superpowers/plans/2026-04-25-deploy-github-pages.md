@@ -13,7 +13,7 @@ GitHub repo (origin)
    └─ pushes from this laptop
        │
        ▼
-GitHub Pages (CDN, HTTPS)  ←  served at https://<user>.github.io/<repo>/
+GitHub Pages (CDN, HTTPS)  ←  served at https://akalkhamis10.github.io/<repo>/
        │
    game ─┬─ index.html  ──┐
          └─ admin.html  ──┤
@@ -98,14 +98,14 @@ Open https://github.com/new and fill:
 - **Do NOT** check "Add a README", "Add .gitignore", or "Add license" — we already have a tracked codebase, and pre-creating those files makes the first push need a `git pull --rebase`.
 - Click **Create repository**.
 
-GitHub now shows a "quick setup" page with a URL like `https://github.com/<username>/shift-game.git`. Copy it.
+GitHub now shows a "quick setup" page with a URL like `https://github.com/akalkhamis10/shift-game.git`. Copy it.
 
 - [ ] **Step 2: Confirm the URL**
 
 It will be one of:
 
-- HTTPS form: `https://github.com/<username>/shift-game.git`
-- SSH form: `git@github.com:<username>/shift-game.git`
+- HTTPS form: `https://github.com/akalkhamis10/shift-game.git`
+- SSH form: `git@github.com:akalkhamis10/shift-game.git`
 
 Use HTTPS unless you've already set up SSH keys for GitHub on this machine. HTTPS will prompt for credentials on first push (use a Personal Access Token instead of password — GitHub's web UI walks you through generating one if you don't have one yet).
 
@@ -126,10 +126,10 @@ Expected: empty output. If there's already a remote called `origin`, skip Step 2
 
 - [ ] **Step 2: Add the remote**
 
-Replace `<your-username>` with your actual GitHub username:
+Replace `akalkhamis10` with your actual GitHub username:
 
 ```bash
-git remote add origin https://github.com/<your-username>/shift-game.git
+git remote add origin https://github.com/akalkhamis10/shift-game.git
 git remote -v
 ```
 
@@ -170,11 +170,11 @@ Under "Build and deployment":
 - **Branch:** `main` / `(root)`
 - Click **Save**.
 
-GitHub now starts a Pages build. The status shows "Your site is live at `https://<username>.github.io/shift-game/`" usually within 1–2 minutes (sometimes longer on first publish).
+GitHub now starts a Pages build. The status shows "Your site is live at `https://akalkhamis10.github.io/shift-game/`" usually within 1–2 minutes (sometimes longer on first publish).
 
 - [ ] **Step 3: Wait for the build to finish, then visit the URL**
 
-Open `https://<username>.github.io/shift-game/` in a fresh tab.
+Open `https://akalkhamis10.github.io/shift-game/` in a fresh tab.
 
 Expected: the SHIFT landing page renders (logo, "ابدأ لعبة جديدة" button, etc.).
 
@@ -214,7 +214,7 @@ Go to https://supabase.com/dashboard/project/vpemuntrgfqettjbqkbn/auth/url-confi
 Set **Site URL** to your Pages URL (no trailing slash):
 
 ```
-https://<your-username>.github.io/shift-game
+https://akalkhamis10.github.io/shift-game
 ```
 
 This is the default destination for any auth redirect that doesn't specify one explicitly.
@@ -224,8 +224,8 @@ This is the default destination for any auth redirect that doesn't specify one e
 In the **Redirect URLs** section, add (one per line):
 
 ```
-https://<your-username>.github.io/shift-game/admin.html
-https://<your-username>.github.io/shift-game/index.html
+https://akalkhamis10.github.io/shift-game/admin.html
+https://akalkhamis10.github.io/shift-game/index.html
 http://127.0.0.1:5500/admin.html
 http://127.0.0.1:5500/index.html
 ```
@@ -249,7 +249,7 @@ If your session was cleared, that's a side-effect of changing the Site URL — n
 - [ ] **Step 1: Open the deployed admin in an incognito window**
 
 ```
-https://<your-username>.github.io/shift-game/admin.html
+https://akalkhamis10.github.io/shift-game/admin.html
 ```
 
 (Incognito so we're guaranteed not to inherit any old session.)
@@ -260,7 +260,7 @@ Expected: the sign-in card.
 
 Type `director83ak@gmail.com`, click "أرسل رابط الدخول". Wait for the email. Click the magic link.
 
-The link should redirect to `https://<your-username>.github.io/shift-game/admin.html#access_token=…`. The page should briefly show "جاري التحقق..." then settle on the **authorized** dashboard with your email in the topbar.
+The link should redirect to `https://akalkhamis10.github.io/shift-game/admin.html#access_token=…`. The page should briefly show "جاري التحقق..." then settle on the **authorized** dashboard with your email in the topbar.
 
 If you get a Supabase error page saying "Invalid redirect URL" — Task 5 wasn't applied. Re-check the allowlist exactly.
 
@@ -283,10 +283,10 @@ Click "تسجيل خروج". Card flips to sign-in. Now you can go back to the r
 - [ ] **Step 1: Open the deployed game**
 
 ```
-https://<your-username>.github.io/shift-game/index.html
+https://akalkhamis10.github.io/shift-game/index.html
 ```
 
-(Or just the bare `https://<user>.github.io/shift-game/` — Pages serves `index.html` by default.)
+(Or just the bare `https://akalkhamis10.github.io/shift-game/` — Pages serves `index.html` by default.)
 
 Expected: brief boot overlay, then the landing page. Console: `[shift] loaded 18 categories from Supabase`.
 
@@ -308,7 +308,7 @@ This proves the property we discussed: edits are live, no redeploy needed.
 
 **Files:** `CNAME` (only if doing this).
 
-If you own a domain like `shiftgame.com` you can serve the game from it instead of `<user>.github.io/shift-game/`.
+If you own a domain like `shiftgame.com` you can serve the game from it instead of `akalkhamis10.github.io/shift-game/`.
 
 - [ ] **Step 1: Add the domain in GitHub Pages settings**
 
@@ -316,7 +316,7 @@ Settings → Pages → Custom domain → enter your domain → Save. GitHub crea
 
 - [ ] **Step 2: Configure DNS at your domain registrar**
 
-Add a `CNAME` record for the subdomain (e.g. `play`) pointing to `<your-username>.github.io.` (with the trailing dot if your registrar allows it).
+Add a `CNAME` record for the subdomain (e.g. `play`) pointing to `akalkhamis10.github.io.` (with the trailing dot if your registrar allows it).
 
 For an apex domain (`shiftgame.com` not `play.shiftgame.com`), follow GitHub's docs — you need 4 `A` records to GitHub's IPs. https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site
 
@@ -328,7 +328,7 @@ Then re-do Task 5 — add `https://your-domain.com/admin.html` and `https://your
 
 Settings → Pages → check "Enforce HTTPS" once available (GitHub auto-provisions a Let's Encrypt cert in 5–30 min).
 
-If you skip this task entirely, the `<user>.github.io` URL keeps working forever — custom domains are pure polish.
+If you skip this task entirely, the `akalkhamis10.github.io` URL keeps working forever — custom domains are pure polish.
 
 ---
 
@@ -343,7 +343,7 @@ So future-you (and any contributor) doesn't have to re-figure out how to push ch
 ```markdown
 # Deploying SHIFT Game
 
-Production: https://<your-username>.github.io/shift-game/
+Production: https://akalkhamis10.github.io/shift-game/
 
 ## To push code changes
 
@@ -367,7 +367,7 @@ Tags are visible in the GitHub repo's "Releases" section.
 
 You don't push code — go to the live admin:
 
-https://<your-username>.github.io/shift-game/admin.html
+https://akalkhamis10.github.io/shift-game/admin.html
 
 Edits hit Supabase directly and are visible in the game on next load.
 No redeploy needed.
