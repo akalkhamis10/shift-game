@@ -1,0 +1,107 @@
+/* ===== Phase 3 admin shell ===== */
+:root {
+  --adm-bg:      #faf6f3;
+  --adm-fg:      #1a1a1a;
+  --adm-muted:   #6b6b6b;
+  --adm-card:    #ffffff;
+  --adm-border:  rgba(0,0,0,.08);
+  --adm-coral:   #e76f6b;
+  --adm-coral-d: #c95652;
+  --adm-warn:    #f1c40f;
+  --adm-shadow:  0 12px 40px rgba(0,0,0,.08);
+}
+
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Tahoma, Arial, sans-serif;
+  background: var(--adm-bg);
+  color: var(--adm-fg);
+  min-height: 100vh;
+}
+
+/* state visibility — one section visible at a time */
+[data-show] { display: none; }
+body[data-state="pending"]        [data-show="pending"]        { display: flex; }
+body[data-state="signed-out"]     [data-show="signed-out"]     { display: flex; }
+body[data-state="not-authorized"] [data-show="not-authorized"] { display: flex; }
+body[data-state="authorized"]     [data-show="authorized"]     { display: flex; }
+
+/* topbar visible only after a session exists (not + authorized states) */
+.adm-top { display: none; }
+body[data-state="not-authorized"] .adm-top,
+body[data-state="authorized"]     .adm-top { display: flex; }
+
+.adm-top {
+  align-items: center; gap: 12px;
+  padding: 14px 22px;
+  background: var(--adm-card);
+  border-bottom: 1px solid var(--adm-border);
+  position: sticky; top: 0; z-index: 10;
+}
+.adm-top__logo  { height: 28px; width: auto; }
+.adm-top__title { font-weight: 700; letter-spacing: .3px; }
+.adm-top__email { color: var(--adm-muted); font-size: 14px; margin-inline-start: auto; }
+
+/* main + cards */
+.adm-main {
+  display: flex; align-items: center; justify-content: center;
+  padding: 48px 16px;
+  min-height: calc(100vh - 60px);
+}
+.adm-card {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 16px;
+  box-shadow: var(--adm-shadow);
+  padding: 40px;
+  width: min(560px, 92vw);
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+}
+.adm-h   { margin: 0; font-size: 26px; }
+.adm-sub { margin: 0; color: var(--adm-muted); line-height: 1.6; }
+
+/* signin form */
+.adm-form  { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; text-align: start; }
+.adm-label { font-size: 13px; color: var(--adm-muted); }
+.adm-input {
+  font: inherit;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--adm-border);
+  background: #fff;
+}
+.adm-input:focus {
+  outline: 2px solid var(--adm-coral);
+  outline-offset: 1px;
+}
+.adm-status { min-height: 22px; margin: 6px 0 0; font-size: 14px; }
+.adm-status.is-ok  { color: #2a8e60; }
+.adm-status.is-bad { color: var(--adm-coral-d); }
+
+/* spinner */
+.adm-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid rgba(0,0,0,.1);
+  border-top-color: var(--adm-coral);
+  border-radius: 50%;
+  animation: adm-spin .9s linear infinite;
+  margin: 0 auto;
+}
+@keyframes adm-spin { to { transform: rotate(360deg); } }
+
+/* lock screen */
+.adm-lock { font-size: 56px; line-height: 1; }
+
+/* authorized stub */
+.adm-stub {
+  margin-top: 14px;
+  padding: 16px 18px;
+  background: rgba(231, 111, 107, 0.08);
+  border: 1px dashed var(--adm-coral);
+  border-radius: 12px;
+  text-align: start;
+}
+.adm-stub ul { margin: 8px 0 0; padding-inline-start: 20px; }
+.adm-stub li { margin: 4px 0; }
