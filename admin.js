@@ -514,9 +514,11 @@
           { value: "medium", label: "متوسط" },
           { value: "hard",   label: "صعب" }
         ] },
-      { name: "prompt_text", label: "نص السؤال",  type: "textarea", required: true },
-      { name: "answer_text", label: "نص الإجابة", type: "textarea", required: true },
-      { name: "order_index", label: "ترتيب العرض", type: "number" }
+      { name: "prompt_text",  label: "نص السؤال",         type: "textarea", required: true },
+      { name: "prompt_media", label: "وسائط مع السؤال (اختياري)", type: "media" },
+      { name: "answer_text",  label: "نص الإجابة",         type: "textarea", required: true },
+      { name: "answer_media", label: "وسائط مع الإجابة (اختياري)", type: "media" },
+      { name: "order_index",  label: "ترتيب العرض", type: "number" }
     ];
   }
 
@@ -534,12 +536,22 @@
         order_index: 0
       },
       onSave: async (values) => {
-        await window.SHIFT_SB.db.insertQuestion({
+        const row = await window.SHIFT_SB.db.insertQuestion({
           category_id:  values.category_id,
           difficulty:   values.difficulty,
           prompt_text:  values.prompt_text,
           answer_text:  values.answer_text,
           order_index:  values.order_index ?? 0
+        });
+        await applyMedia({
+          entity: "questions", id: row.id, slot: "prompt",
+          column: "prompt_media_url", typeColumn: "prompt_media_type",
+          field: values.prompt_media
+        });
+        await applyMedia({
+          entity: "questions", id: row.id, slot: "answer",
+          column: "answer_media_url", typeColumn: "answer_media_type",
+          field: values.answer_media
         });
         await renderQuestionsTab();
       }
@@ -563,7 +575,9 @@
           difficulty:  row.difficulty,
           prompt_text: row.prompt_text,
           answer_text: row.answer_text,
-          order_index: row.order_index
+          order_index: row.order_index,
+          prompt_media: mediaInitial(row.prompt_media_url, row.prompt_media_type || "none"),
+          answer_media: mediaInitial(row.answer_media_url, row.answer_media_type || "none")
         },
         onSave: async (values) => {
           await window.SHIFT_SB.db.update("questions", id, {
@@ -572,6 +586,16 @@
             prompt_text:  values.prompt_text,
             answer_text:  values.answer_text,
             order_index:  values.order_index ?? 0
+          });
+          await applyMedia({
+            entity: "questions", id, slot: "prompt",
+            column: "prompt_media_url", typeColumn: "prompt_media_type",
+            field: values.prompt_media
+          });
+          await applyMedia({
+            entity: "questions", id, slot: "answer",
+            column: "answer_media_url", typeColumn: "answer_media_type",
+            field: values.answer_media
           });
           await renderQuestionsTab();
         }
