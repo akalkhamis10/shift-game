@@ -208,6 +208,9 @@
           difficulty: q.d,
           points: DIFFICULTIES.find(d => d.id === q.d).points,
           q: q.q, a: q.a,
+          // Phase 5: carry media fields onto the cell so renderQMedia has them.
+          promptMediaType: q.promptMediaType, promptMediaUrl: q.promptMediaUrl,
+          answerMediaType: q.answerMediaType, answerMediaUrl: q.answerMediaUrl,
           used: false, awardedTo: null  // null, 0, 1, -1
         });
       });
