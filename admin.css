@@ -304,3 +304,56 @@ body[data-state="authorized"]     .adm-top { display: flex; }
   from { transform: translateY(-6px); opacity: 0; }
   to   { transform: none;             opacity: 1; }
 }
+
+/* ===== Phase 5 media field ===== */
+
+.adm-media {
+  display: flex; flex-direction: column; gap: 10px;
+  border: 1px solid var(--adm-border);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(0,0,0,.015);
+}
+.adm-media__types {
+  display: flex; flex-wrap: wrap; gap: 14px;
+  font-size: 14px;
+}
+.adm-media__type { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.adm-media__type input { margin: 0; }
+
+.adm-media__file {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 13px;
+}
+.adm-media__file input[type="file"] {
+  font: inherit;
+  padding: 6px;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  background: #fff;
+  max-width: 260px;
+}
+.adm-media__meta { color: var(--adm-muted); }
+
+.adm-media__preview:empty { display: none; }
+.adm-media__preview {
+  background: #fff;
+  border: 1px dashed var(--adm-border);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 60px;
+  max-height: 220px;
+  overflow: hidden;
+}
+.adm-media__preview img,
+.adm-media__preview video {
+  max-width: 100%;
+  max-height: 200px;
+  display: block;
+  border-radius: 6px;
+}
+.adm-media__preview audio {
+  width: 100%;
+  max-width: 360px;
+}
