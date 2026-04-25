@@ -137,6 +137,154 @@
           o.textContent = opt.label;
           control.appendChild(o);
         }
+      } else if (f.type === "media"){
+        // Composite control: type radio + file input + preview.
+        // We attach the resulting state to a hidden <input data-media> so the
+        // submit handler can read it like any other field.
+        const composite = document.createElement("div");
+        composite.className = "adm-media";
+        const id = `admField_${f.name}`;
+        composite.id = id;
+
+        // Hidden state — read by onSubmit.
+        const stateInput = document.createElement("input");
+        stateInput.type = "hidden";
+        stateInput.dataset.media = "1";
+        stateInput.name = f.name;
+        composite.appendChild(stateInput);
+
+        // Type radio.
+        const typeBar = document.createElement("div");
+        typeBar.className = "adm-media__types";
+        for (const opt of [
+          { value: "none",  label: "بدون" },
+          { value: "image", label: "صورة" },
+          { value: "video", label: "فيديو" },
+          { value: "audio", label: "صوت" }
+        ]){
+          const lbl = document.createElement("label");
+          lbl.className = "adm-media__type";
+          const r = document.createElement("input");
+          r.type = "radio";
+          r.name = `admMediaType_${f.name}`;
+          r.value = opt.value;
+          if ((initial[f.name]?.type || "none") === opt.value) r.checked = true;
+          lbl.append(r, document.createTextNode(" " + opt.label));
+          typeBar.appendChild(lbl);
+        }
+        composite.appendChild(typeBar);
+
+        // File input.
+        const fileRow = document.createElement("div");
+        fileRow.className = "adm-media__file";
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.dataset.role = "file";
+        fileRow.appendChild(fileInput);
+        const fileMeta = document.createElement("span");
+        fileMeta.className = "adm-media__meta";
+        fileRow.appendChild(fileMeta);
+        composite.appendChild(fileRow);
+
+        // Preview.
+        const preview = document.createElement("div");
+        preview.className = "adm-media__preview";
+        composite.appendChild(preview);
+
+        // ---- per-control state + helpers ----
+        const state = {
+          existingUrl: initial[f.name]?.url || null,
+          existingPath: initial[f.name]?.path || null,
+          newFile: null,
+          // The "current" type — kept in sync with the radio.
+          type: initial[f.name]?.type || "none"
+        };
+        function syncStateInput(){
+          stateInput.value = JSON.stringify({
+            type: state.type,
+            existingUrl: state.existingUrl,
+            existingPath: state.existingPath,
+            // Files don't serialise to JSON; we look up the live File via dataset on submit.
+            hasNewFile: !!state.newFile
+          });
+        }
+        function renderPreview(){
+          preview.innerHTML = "";
+          if (state.type === "none"){ return; }
+          let url = null;
+          if (state.newFile) url = URL.createObjectURL(state.newFile);
+          else if (state.existingUrl) url = state.existingUrl;
+          if (!url) return;
+          if (state.type === "image"){
+            const img = document.createElement("img");
+            img.src = url; img.alt = "";
+            preview.appendChild(img);
+          } else if (state.type === "video"){
+            const v = document.createElement("video");
+            v.src = url; v.controls = true;
+            preview.appendChild(v);
+          } else if (state.type === "audio"){
+            const a = document.createElement("audio");
+            a.src = url; a.controls = true;
+            preview.appendChild(a);
+          }
+        }
+        function setFileMeta(){
+          if (state.newFile){
+            const kb = (state.newFile.size / 1024);
+            const sz = kb >= 1024 ? `${(kb/1024).toFixed(1)} MB` : `${Math.round(kb)} KB`;
+            fileMeta.textContent = `${state.newFile.name} (${sz})`;
+          } else {
+            fileMeta.textContent = "";
+          }
+        }
+
+        // ---- wire interactions ----
+        composite.querySelectorAll(`input[name="admMediaType_${f.name}"]`).forEach(r => {
+          r.addEventListener("change", () => {
+            state.type = r.value;
+            // Switching away from a type clears the picked file (the file may not match).
+            if (state.type === "none"){
+              state.newFile = null; fileInput.value = ""; setFileMeta();
+            }
+            renderPreview();
+            syncStateInput();
+          });
+        });
+        fileInput.addEventListener("change", () => {
+          const file = fileInput.files?.[0] || null;
+          if (!file){ state.newFile = null; setFileMeta(); renderPreview(); syncStateInput(); return; }
+          // Validate size against current type.
+          const limit = window.SHIFT_SB.storage.LIMITS[state.type];
+          if (limit && file.size > limit){
+            const human = `${Math.round(limit / 1024 / 1024)}MB`;
+            toast(`الملف أكبر من الحد المسموح (${human}).`, "bad");
+            fileInput.value = ""; state.newFile = null; setFileMeta(); renderPreview(); syncStateInput();
+            return;
+          }
+          state.newFile = file;
+          setFileMeta();
+          renderPreview();
+          syncStateInput();
+        });
+
+        // Initial render.
+        syncStateInput();
+        setFileMeta();
+        renderPreview();
+        // Stash the live File reference on the composite element itself so onSubmit
+        // can pull it out (we can't put a File into a hidden input value).
+        composite._getFile = () => state.newFile;
+        composite._getState = () => ({ ...state });
+
+        const label = document.createElement("label");
+        label.htmlFor = id;
+        label.textContent = f.label;
+
+        wrap.appendChild(label);
+        wrap.appendChild(composite);
+        body.appendChild(wrap);
+        continue; // skip the generic input-creation path below
       } else {
         control = document.createElement("input");
         control.type = (f.type === "number") ? "number" : "text";
@@ -162,6 +310,17 @@
       const values = {};
       for (const f of fields){
         const el = document.getElementById(`admField_${f.name}`);
+        if (f.type === "media"){
+          const stateInput = el.querySelector('input[data-media]');
+          const parsed = JSON.parse(stateInput.value);
+          values[f.name] = {
+            type: parsed.type,
+            existingUrl: parsed.existingUrl,
+            existingPath: parsed.existingPath,
+            file: el._getFile?.() || null
+          };
+          continue;
+        }
         let val = el.value;
         if (f.type === "number") val = (val === "") ? null : Number(val);
         if (val === "" && !f.required) val = null;
