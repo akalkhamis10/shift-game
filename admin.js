@@ -655,6 +655,8 @@
         options: (cache.sections || []).map(s => ({ value: s.id, label: s.name })) },
       { name: "name",        label: "اسم الفئة",   type: "text",   required: true },
       { name: "emoji",       label: "أيقونة (إيموجي)", type: "text" },
+      { name: "image",       label: "أيقونة الصورة (اختياري)", type: "media" },
+      { name: "cover",       label: "صورة الغلاف الكبيرة (اختياري)", type: "media" },
       { name: "order_index", label: "ترتيب العرض", type: "number" }
     ];
   }
@@ -672,12 +674,14 @@
         order_index: cache.categories?.length ?? 0
       },
       onSave: async (values) => {
-        await window.SHIFT_SB.db.insertCategory({
+        const row = await window.SHIFT_SB.db.insertCategory({
           section_id:  values.section_id,
           name:        values.name,
           emoji:       values.emoji,
           order_index: values.order_index ?? 0
         });
+        await applyMedia({ entity: "categories", id: row.id, slot: "image", column: "image_url", field: values.image });
+        await applyMedia({ entity: "categories", id: row.id, slot: "cover", column: "cover_url", field: values.cover });
         await renderCategoriesTab();
       }
     });
@@ -698,6 +702,8 @@
           section_id: row.section_id,
           name: row.name,
           emoji: row.emoji ?? "",
+          image: mediaInitial(row.image_url, row.image_url ? "image" : "none"),
+          cover: mediaInitial(row.cover_url, row.cover_url ? "image" : "none"),
           order_index: row.order_index
         },
         onSave: async (values) => {
@@ -707,6 +713,8 @@
             emoji:       values.emoji,
             order_index: values.order_index ?? 0
           });
+          await applyMedia({ entity: "categories", id, slot: "image", column: "image_url", field: values.image });
+          await applyMedia({ entity: "categories", id, slot: "cover", column: "cover_url", field: values.cover });
           await renderCategoriesTab();
         }
       });
