@@ -78,9 +78,15 @@
     }
   });
 
-  // Listen to all auth state changes (including the magic-link redirect).
-  client.auth.onAuthStateChange(() => evaluate());
-
-  // Initial check
-  evaluate();
+  // Listen to all auth state changes. Supabase fires an "INITIAL_SESSION"
+  // event once it has restored the session from storage on init, so we don't
+  // need a separate boot call — that would race the SDK's own lock and stick
+  // the page on "pending". As a safety net, fall back to a manual evaluate()
+  // if INITIAL_SESSION hasn't fired in 1.5s (e.g. very old SDK builds).
+  let initialSessionSeen = false;
+  client.auth.onAuthStateChange((event) => {
+    if (event === "INITIAL_SESSION") initialSessionSeen = true;
+    evaluate();
+  });
+  setTimeout(() => { if (!initialSessionSeen) evaluate(); }, 1500);
 })();
