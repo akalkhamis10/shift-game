@@ -221,7 +221,34 @@
 
 </div>
 
+<!-- Boot overlay (hidden once content is ready) -->
+<div id="boot" class="boot-overlay" aria-hidden="false">
+  <img src="assets/logo/shift-coral.png" alt="" class="boot-overlay__logo" />
+  <p class="boot-overlay__msg">جاري تحميل الأسئلة…</p>
+</div>
+
+<!-- 1) Fallback bundle (synchronous) -->
 <script src="data.js"></script>
-<script src="app.js"></script>
+
+<!-- 2) Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- 3) Project Supabase client -->
+<script src="lib/supabase.js"></script>
+
+<!-- 4) Loader — reshapes Supabase tree into window.SHIFT_DATA -->
+<script src="lib/content.js"></script>
+
+<!-- 5) Bootstrap: wait for content, then inject app.js -->
+<script>
+  (async () => {
+    try { await window.SHIFT_CONTENT_READY; }
+    catch (e) { console.error("[shift] boot failed", e); }
+    document.getElementById("boot")?.setAttribute("aria-hidden", "true");
+    const s = document.createElement("script");
+    s.src = "app.js";
+    document.body.appendChild(s);
+  })();
+</script>
 </body>
 </html>
