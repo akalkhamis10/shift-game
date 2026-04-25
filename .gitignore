@@ -5,3 +5,7 @@ node_modules/
 *.log
 .env
 .env.local
+
+# Dev-environment artifacts
+.claude/
+.playwright-mcp/
