@@ -1,0 +1,39 @@
+- generic [ref=e2]:
+  - text: › ✓ ✓ ✓ ✓ test2 →
+  - generic [ref=e15]:
+    - generic [ref=e16]:
+      - button "‹" [ref=e17] [cursor=pointer]
+      - generic [ref=e18]:
+        - generic [ref=e19]: 🌍 معلومات عامة
+        - generic [ref=e20]: سهل
+        - generic [ref=e21]: 200 نقطة
+      - button "↶" [ref=e22] [cursor=pointer]
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - img [ref=e26]
+          - generic [ref=e29]: 00:50
+        - generic [ref=e30]: ما أكبر محيط في العالم؟
+      - generic [ref=e31]:
+        - generic [ref=e33]: test
+        - generic [ref=e34]:
+          - generic [ref=e35]: test2
+          - generic [ref=e36]:
+            - generic "تخطَّ السؤال بدون خسارة، ولا يحصل عليه الفريق المقابل." [ref=e37] [cursor=pointer]:
+              - generic [ref=e38]: 🖐️
+              - generic [ref=e39]: استريح
+            - generic "إن أجاب الفريق المقابل إجابة خاطئة، تُخصم من رصيده نقاط السؤال مضاعفة." [ref=e40] [cursor=pointer]:
+              - generic [ref=e41]: 🪤
+              - generic [ref=e42]: الفخ
+            - 'generic "أجبر الفريق المنافس على الإجابة أولاً: إذا أخطأ يخسر نصف نقاط السؤال." [ref=e43] [cursor=pointer]':
+              - generic [ref=e44]: 🕳️
+              - generic [ref=e45]: الحفرة
+      - generic [ref=e46]:
+        - button "أوقف الوقت" [ref=e47] [cursor=pointer]
+        - button "صفّر الوقت" [ref=e48] [cursor=pointer]
+        - button "مرّر للفريق الآخر" [ref=e49] [cursor=pointer]
+        - button "اعرض الإجابة" [ref=e50] [cursor=pointer]
+  - generic [ref=e52]:
+    - generic [ref=e53]: تنبيه
+    - generic [ref=e55]: يرجى اختيار ٣ وسائل مساعدة لكل فريق.
+    - button "حسناً" [ref=e57] [cursor=pointer]

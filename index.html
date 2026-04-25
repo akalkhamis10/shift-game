@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>SHIFT — لعبة المسابقات</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="assets/logo/shift-coral.png" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ========== LANDING ========== -->
+  <section class="screen screen--landing" data-screen="landing">
+    <div class="landing__bg"></div>
+    <div class="landing__inner">
+      <img class="landing__logo" src="assets/logo/shift-coral.png" alt="SHIFT" />
+      <h1 class="landing__title">لعبة المسابقات الجماعية</h1>
+      <p class="landing__tagline">فريقان. ست فئات. ست وثلاثون سؤالاً. انتصار واحد.</p>
+      <button class="btn btn--primary btn--xl" data-action="go-setup">ابدأ لعبة جديدة</button>
+      <div class="landing__meta">
+        <span>العب مع العائلة</span><i></i>
+        <span>الأصدقاء</span><i></i>
+        <span>الشباب والبنات</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== TEAM SETUP ========== -->
+  <section class="screen" data-screen="setup" hidden>
+    <header class="topbar">
+      <button class="iconbtn" data-action="back-landing" title="رجوع">‹</button>
+      <img class="topbar__logo" src="assets/logo/shift-coral.png" alt="SHIFT" />
+      <div class="topbar__spacer"></div>
+    </header>
+
+    <div class="setup">
+      <h2 class="setup__h">حدد معلومات الفرق</h2>
+
+      <label class="field">
+        <span class="field__label">اسم اللعبة</span>
+        <input id="gameName" type="text" placeholder="مثال: ليلة الثلاثاء" maxlength="40" />
+      </label>
+
+      <div class="teams">
+        <div class="team-card">
+          <h3>الفريق الأول</h3>
+          <input id="team1Name" type="text" placeholder="اسم الفريق" maxlength="24" />
+          <div class="team-card__hint">اختر ٣ وسائل مساعدة</div>
+          <div class="lifelines" data-team="1"></div>
+        </div>
+        <div class="team-card">
+          <h3>الفريق الثاني</h3>
+          <input id="team2Name" type="text" placeholder="اسم الفريق" maxlength="24" />
+          <div class="team-card__hint">اختر ٣ وسائل مساعدة</div>
+          <div class="lifelines" data-team="2"></div>
+        </div>
+      </div>
+
+      <details class="acc">
+        <summary>قسّملي الفرق تلقائياً</summary>
+        <div class="acc__body">
+          <label class="field">
+            <span class="field__label">أسماء اللاعبين (اسم لكل سطر)</span>
+            <textarea id="playersPool" rows="6" placeholder="أحمد&#10;سارة&#10;فيصل&#10;..."></textarea>
+          </label>
+          <button class="btn" data-action="split-teams">اقسم الفرق</button>
+          <div id="splitResult" class="split-result"></div>
+        </div>
+      </details>
+
+      <button class="btn btn--primary btn--xl" data-action="go-categories">اختر الفئات</button>
+    </div>
+  </section>
+
+  <!-- ========== CATEGORIES ========== -->
+  <section class="screen" data-screen="categories" hidden>
+    <header class="topbar">
+      <button class="iconbtn" data-action="back-setup" title="رجوع">‹</button>
+      <img class="topbar__logo" src="assets/logo/shift-coral.png" alt="SHIFT" />
+      <div class="pill" id="catCounter">٠ / ٦</div>
+    </header>
+
+    <div class="cats">
+      <h2 class="cats__h">اختر ٦ فئات</h2>
+      <div class="cats__groups" id="catGroups"></div>
+      <div class="cats__footer">
+        <button class="btn btn--primary btn--xl" id="catStartBtn" data-action="go-board" disabled>ابدأ اللعب</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== GAME BOARD ========== -->
+  <section class="screen screen--board" data-screen="board" hidden>
+    <header class="topbar topbar--board">
+      <button class="iconbtn" data-action="home-confirm" title="إنهاء">✕</button>
+      <div class="score-pair">
+        <div class="score score--t1">
+          <span class="score__name" id="t1Name">الفريق الأول</span>
+          <button class="score__btn" data-action="edit-score" data-team="1">
+            <span id="t1Score">0</span>
+          </button>
+          <span class="score__turn" id="t1Turn">الدور</span>
+        </div>
+        <img class="topbar__logo" src="assets/logo/shift-coral.png" alt="SHIFT" />
+        <div class="score score--t2">
+          <span class="score__name" id="t2Name">الفريق الثاني</span>
+          <button class="score__btn" data-action="edit-score" data-team="2">
+            <span id="t2Score">0</span>
+          </button>
+          <span class="score__turn" id="t2Turn">الدور</span>
+        </div>
+      </div>
+      <button class="iconbtn" data-action="undo" title="تراجع">↶</button>
+    </header>
+
+    <!-- Single board: each category card embeds its 6 point cells (2 × 200/400/600). -->
+    <div class="hub" id="hubView">
+      <div class="hub__grid" id="hubGrid"></div>
+    </div>
+
+    <footer class="board__foot">
+      <div class="lifelines-bar" data-team="1" id="ll1"></div>
+      <div class="board__turn">
+        <span id="turnLabel">دور <b id="turnTeamName">الفريق الأول</b></span>
+      </div>
+      <div class="lifelines-bar" data-team="2" id="ll2"></div>
+    </footer>
+  </section>
+
+  <!-- ========== QUESTION ========== -->
+  <section class="screen screen--question" data-screen="question" hidden>
+    <header class="topbar topbar--question">
+      <button class="iconbtn" data-action="back-board" title="رجوع">‹</button>
+      <div class="q-meta">
+        <span id="qCategory" class="pill pill--cat">—</span>
+        <span id="qDifficulty" class="pill pill--diff">—</span>
+        <span id="qPoints" class="pill pill--pts">٠ نقطة</span>
+      </div>
+      <button class="iconbtn" data-action="undo" title="تراجع">↶</button>
+    </header>
+
+    <div class="qwrap">
+      <div class="q-card">
+        <div class="timer" id="timer">
+          <svg viewBox="0 0 120 120" class="timer__svg">
+            <circle cx="60" cy="60" r="54" class="timer__track"></circle>
+            <circle cx="60" cy="60" r="54" class="timer__ring" id="timerRing"></circle>
+          </svg>
+          <div class="timer__text" id="timerText">00</div>
+        </div>
+        <div class="q-text" id="qText">—</div>
+
+        <div class="q-answer" id="qAnswer" hidden>
+          <div class="q-answer__label">الإجابة</div>
+          <div class="q-answer__value" id="qAnswerText">—</div>
+        </div>
+      </div>
+
+      <div class="q-lifelines">
+        <div class="q-lifelines__side" data-team="1">
+          <div class="q-lifelines__name" id="qT1Name">الفريق الأول</div>
+          <div class="q-lifelines__list" id="qLL1"></div>
+        </div>
+        <div class="q-lifelines__side" data-team="2">
+          <div class="q-lifelines__name" id="qT2Name">الفريق الثاني</div>
+          <div class="q-lifelines__list" id="qLL2"></div>
+        </div>
+      </div>
+
+      <div class="q-controls">
+        <button class="btn btn--ghost" data-action="timer-toggle" id="timerToggleBtn">ابدأ الوقت</button>
+        <button class="btn btn--ghost" data-action="timer-reset">صفّر الوقت</button>
+        <button class="btn btn--ghost" data-action="pass-turn">مرّر للفريق الآخر</button>
+        <button class="btn btn--dark" data-action="reveal">اعرض الإجابة</button>
+      </div>
+
+      <div class="q-award" id="qAward" hidden>
+        <div class="q-award__label">من أجاب إجابة صحيحة؟</div>
+        <div class="q-award__btns">
+          <button class="btn btn--t1" data-action="award" data-to="1" id="awardT1">الفريق الأول +٠</button>
+          <button class="btn btn--t2" data-action="award" data-to="2" id="awardT2">الفريق الثاني +٠</button>
+          <button class="btn" data-action="award" data-to="none">لا أحد</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== RESULTS ========== -->
+  <section class="screen screen--results" data-screen="results" hidden>
+    <div class="results">
+      <img class="results__logo" src="assets/logo/shift-coral.png" alt="SHIFT" />
+      <h2 class="results__h">انتهت اللعبة</h2>
+      <div class="results__winner" id="winnerLine">—</div>
+      <div class="results__scores">
+        <div class="results__team">
+          <div class="results__name" id="rT1Name">الفريق الأول</div>
+          <div class="results__score" id="rT1Score">0</div>
+        </div>
+        <div class="results__vs">—</div>
+        <div class="results__team">
+          <div class="results__name" id="rT2Name">الفريق الثاني</div>
+          <div class="results__score" id="rT2Score">0</div>
+        </div>
+      </div>
+      <div class="results__actions">
+        <button class="btn btn--primary btn--xl" data-action="play-again">العب مرة أخرى</button>
+        <button class="btn btn--ghost" data-action="go-home">الصفحة الرئيسية</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== MODAL ========== -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal__card">
+      <div class="modal__title" id="modalTitle">—</div>
+      <div class="modal__body" id="modalBody"></div>
+      <div class="modal__actions" id="modalActions"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
