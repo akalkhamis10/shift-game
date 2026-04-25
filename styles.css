@@ -45,8 +45,12 @@ body{
   direction: rtl;
 }
 
-#app{ min-height: 100vh; }
-body.no-scroll{ overflow: hidden; height: 100vh; }
+#app{ min-height: 100vh; min-height: 100dvh; }
+body.no-scroll{
+  overflow: hidden;
+  height: 100vh;          /* fallback */
+  height: 100dvh;         /* iOS Safari address bar honored */
+}
 
 /* ---------- Screens ---------- */
 .screen{
@@ -310,7 +314,9 @@ body.no-scroll{ overflow: hidden; height: 100vh; }
 /* ---------- Board ---------- */
 .screen--board{
   display:flex; flex-direction:column;
-  height: 100vh; max-height: 100vh; overflow: hidden;
+  height: 100vh; max-height: 100vh;          /* fallback */
+  height: 100dvh; max-height: 100dvh;        /* iOS Safari aware */
+  overflow: hidden;
 }
 .topbar--board{
   padding: 10px 16px;
@@ -657,17 +663,32 @@ body.no-scroll{ overflow: hidden; height: 100vh; }
    stays no-scroll on phones; everything fits in the viewport.
    ====================================================================== */
 
-/* Phones in general (≤ 460px wide) — 2 cols × 3 rows, tight spacing,
-   point cells inside each tile, no scrolling. */
+/* Mobile + landscape — convert .hub-tile from CSS-grid to flex-column so
+   children stack naturally even when the emoji art is `display:none`. The
+   grid layout has a fixed 3-row template (auto auto 1fr); when art is
+   hidden, items auto-flow into rows 1+2 leaving the 1fr row empty (visible
+   as whitespace below the cells). Flex avoids that. */
+@media (max-width: 460px), (orientation: landscape) and (max-height: 500px){
+  .hub-tile{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .hub-tile__cells{
+    flex: 1;
+    align-self: stretch;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 1fr;
+  }
+}
+
+/* Phones — portrait, ≤ 460px wide. 2 cols × 3 rows, content-natural tile
+   heights centered in the hub. */
 @media (max-width: 460px){
-  /* Make the grid fill the hub vertically so 3 equal rows divide the
-     available height instead of each row taking content-natural height. */
-  .hub{ align-items: stretch; padding: 6px 8px; }
+  .hub{ align-items: center; padding: 6px 8px; }
   .hub__grid{
     grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: repeat(3, 1fr);
     gap: 8px;
-    height: 100%;
   }
 
   .topbar--board{ padding: 6px 10px; gap: 6px; }
@@ -681,7 +702,6 @@ body.no-scroll{ overflow: hidden; height: 100vh; }
     gap: 4px;
     border-radius: 14px;
     min-width: 0;
-    min-height: 0;
     overflow: hidden;
   }
   .hub-tile__art{
@@ -693,10 +713,9 @@ body.no-scroll{ overflow: hidden; height: 100vh; }
     font-size: 12px;
     line-height: 1.15;
   }
-  .hub-tile__cells{ gap: 4px; }
+  .hub-tile__cells{ gap: 4px; height: auto; }
   .hub-tile__cell{
-    padding: 4px 2px;
-    min-height: 0;
+    padding: 6px 2px;
     font-size: 14px;
     border-radius: 8px;
   }
@@ -737,12 +756,51 @@ body.no-scroll{ overflow: hidden; height: 100vh; }
   .ll-chip .icon{ width: 12px; height: 12px; }
 }
 
-/* Short phones (≤ 700px tall — covers iPhone SE 3rd gen at 667 and older
-   Androids). Drop the decorative emoji art so the point cells get the
-   vertical space they need. The category name still identifies the tile. */
+/* Short portrait phones (≤ 700px tall — iPhone SE etc). Drop the decorative
+   emoji art so the cells get the vertical space they need. */
 @media (max-width: 460px) and (max-height: 700px){
   .hub-tile__art{ display: none; }
   .hub-tile{ padding: 6px 4px; gap: 3px; }
   .hub-tile__name{ font-size: 11px; }
-  .hub-tile__cell{ font-size: 13px; min-height: 0; }
+  .hub-tile__cell{ font-size: 13px; }
+}
+
+/* Phone in LANDSCAPE (wide-but-short, ≤ 500px tall). 3 cols × 2 rows so
+   all 6 categories fit; emoji art hidden because there's no vertical room. */
+@media (orientation: landscape) and (max-height: 500px){
+  .hub{ align-items: stretch; padding: 4px 8px; }
+  .hub__grid{
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 6px;
+    height: 100%;
+  }
+
+  .topbar--board{ padding: 4px 8px; gap: 6px; }
+  .topbar__logo{ height: 22px; }
+  .score__btn{ font-size: 20px; padding: 0 4px; }
+  .score__name{ font-size: 10px; max-width: 90px; }
+
+  .hub-tile{
+    padding: 4px;
+    gap: 2px;
+    border-radius: 12px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .hub-tile__art{ display: none; }
+  .hub-tile__name{ font-size: 11px; line-height: 1.1; margin: 0; }
+  .hub-tile__cells{ gap: 3px; height: 100%; }
+  .hub-tile__cell{
+    padding: 2px 1px;
+    font-size: 12px;
+    border-radius: 6px;
+    min-height: 0;
+  }
+
+  .board__foot{ padding: 4px 8px; gap: 6px; }
+  .ll-chip{ padding: 2px 6px; font-size: 10px; gap: 3px; }
+  .ll-chip .icon{ width: 12px; height: 12px; font-size: 9px; }
+  .board__turn{ padding: 3px 8px; font-size: 10px; }
 }
