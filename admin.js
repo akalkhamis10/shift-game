@@ -244,9 +244,148 @@
   async function refreshCategories(){ cache.categories = await window.SHIFT_SB.db.listAll("categories", { order: [{ col: "order_index" }, { col: "name" }] }); return cache.categories; }
   async function refreshQuestions(opts){ cache.questions = await window.SHIFT_SB.db.listAll("questions", opts); return cache.questions; }
 
-  // Stubs filled by Tasks 7/8 — defined now so setActiveTab() can call them safely.
-  async function renderCategoriesTab(){}
+  // Stub filled by Task 8 — defined now so setActiveTab() can call it safely.
   async function renderQuestionsTab(){}
+
+  /* ============================================================
+   * Categories tab
+   * ============================================================ */
+
+  function refreshCatFilterDropdown(){
+    const sel = $("admCatFilterSection");
+    const current = sel.value;
+    sel.innerHTML = `<option value="">الكل</option>`;
+    for (const s of (cache.sections || [])){
+      const o = document.createElement("option");
+      o.value = s.id; o.textContent = s.name;
+      sel.appendChild(o);
+    }
+    sel.value = current || "";
+  }
+
+  async function renderCategoriesTab(){
+    const tbody = $("admCategoriesBody");
+    tbody.innerHTML = `<tr class="adm-empty"><td colspan="5">جاري التحميل…</td></tr>`;
+    try {
+      const [sections, categories, qcounts] = await Promise.all([
+        refreshSections(),
+        refreshCategories(),
+        window.SHIFT_SB.db.categoryQuestionCounts()
+      ]);
+      refreshCatFilterDropdown();
+
+      const sectionFilter = $("admCatFilterSection").value;
+      const sectionsById = new Map(sections.map(s => [s.id, s]));
+      const list = sectionFilter
+        ? categories.filter(c => c.section_id === sectionFilter)
+        : categories;
+
+      if (!list.length){
+        tbody.innerHTML = `<tr class="adm-empty"><td colspan="5">لا توجد فئات. اضغط "+ إضافة فئة".</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = "";
+      for (const c of list){
+        const tr = document.createElement("tr");
+        const sectionName = sectionsById.get(c.section_id)?.name ?? "—";
+        tr.innerHTML = `
+          <td><span class="adm-pill">${escapeHTML(sectionName)}</span></td>
+          <td>${escapeHTML(c.name)}</td>
+          <td>${c.emoji ? escapeHTML(c.emoji) : "—"}</td>
+          <td>${qcounts.get(c.id) || 0}</td>
+          <td class="adm-row-actions">
+            <button class="btn" data-action="edit-category"   data-id="${c.id}">تعديل</button>
+            <button class="btn adm-danger" data-action="delete-category" data-id="${c.id}">حذف</button>
+          </td>`;
+        tbody.appendChild(tr);
+      }
+    } catch (err){
+      tbody.innerHTML = `<tr class="adm-empty"><td colspan="5">خطأ: ${escapeHTML(err.message || err)}</td></tr>`;
+    }
+  }
+
+  $("admCatFilterSection").addEventListener("change", () => renderCategoriesTab());
+
+  function categoryFields(){
+    return [
+      { name: "section_id", label: "القسم", type: "select", required: true,
+        options: (cache.sections || []).map(s => ({ value: s.id, label: s.name })) },
+      { name: "name",        label: "اسم الفئة",   type: "text",   required: true },
+      { name: "emoji",       label: "أيقونة (إيموجي)", type: "text" },
+      { name: "order_index", label: "ترتيب العرض", type: "number" }
+    ];
+  }
+
+  $("admAddCategory").addEventListener("click", () => {
+    if (!cache.sections?.length){
+      toast("أضف قسماً واحداً على الأقل أولاً.", "bad");
+      return;
+    }
+    openEditModal({
+      title: "إضافة فئة جديدة",
+      fields: categoryFields(),
+      initial: {
+        section_id: cache.sections[0].id,
+        order_index: cache.categories?.length ?? 0
+      },
+      onSave: async (values) => {
+        await window.SHIFT_SB.db.insertCategory({
+          section_id:  values.section_id,
+          name:        values.name,
+          emoji:       values.emoji,
+          order_index: values.order_index ?? 0
+        });
+        await renderCategoriesTab();
+      }
+    });
+  });
+
+  $("admCategoriesBody").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-action]");
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const row = (cache.categories || []).find(c => c.id === id);
+    if (!row) return;
+
+    if (btn.dataset.action === "edit-category"){
+      openEditModal({
+        title: `تعديل فئة: ${row.name}`,
+        fields: categoryFields(),
+        initial: {
+          section_id: row.section_id,
+          name: row.name,
+          emoji: row.emoji ?? "",
+          order_index: row.order_index
+        },
+        onSave: async (values) => {
+          await window.SHIFT_SB.db.update("categories", id, {
+            section_id:  values.section_id,
+            name:        values.name,
+            emoji:       values.emoji,
+            order_index: values.order_index ?? 0
+          });
+          await renderCategoriesTab();
+        }
+      });
+    } else if (btn.dataset.action === "delete-category"){
+      // We need question count for this category; fetch on-demand.
+      window.SHIFT_SB.db.categoryQuestionCounts().then(counts => {
+        const n = counts.get(id) || 0;
+        const body = n
+          ? `سيُحذف ${n} سؤال مع هذه الفئة. لا يمكن التراجع.`
+          : "سيُحذف هذه الفئة نهائياً. لا يمكن التراجع.";
+        openConfirm({
+          title: `حذف الفئة "${row.name}"؟`,
+          body,
+          danger: true,
+          onConfirm: async () => {
+            await window.SHIFT_SB.db.remove("categories", id);
+            await renderCategoriesTab();
+          }
+        });
+      });
+    }
+  });
 
   /* ============================================================
    * Sections tab
