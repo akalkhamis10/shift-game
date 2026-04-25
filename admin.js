@@ -220,6 +220,12 @@
     for (const btn of document.querySelectorAll(".adm-tab")){
       btn.setAttribute("aria-selected", btn.dataset.tabTarget === name ? "true" : "false");
     }
+    // Clear/set the `hidden` attribute on each panel so the
+    // `.adm-panel[hidden] { display: none !important }` rule doesn't trap an
+    // inactive-at-load panel hidden after a tab switch.
+    for (const p of document.querySelectorAll(".adm-panel")){
+      p.hidden = p.dataset.tabPanel !== name;
+    }
     if (name === "sections")    renderSectionsTab();
     if (name === "categories")  renderCategoriesTab();
     if (name === "questions")   renderQuestionsTab();
