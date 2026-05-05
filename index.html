@@ -37,10 +37,32 @@
     <div class="setup">
       <h2 class="setup__h">حدد معلومات الفرق</h2>
 
-      <label class="field">
-        <span class="field__label">اسم اللعبة</span>
-        <input id="gameName" type="text" placeholder="مثال: ليلة الثلاثاء" maxlength="40" />
-      </label>
+      <div class="setup__col">
+        <label class="field">
+          <span class="field__label">اسم اللعبة</span>
+          <input id="gameName" type="text" placeholder="مثال: ليلة الثلاثاء" maxlength="40" />
+        </label>
+
+        <div class="mode-toggle">
+          <span class="mode-toggle__h">نمط اللوح</span>
+          <div class="mode-toggle__opts">
+            <label><input type="radio" name="boardMode" value="all" checked /> كل الفئات على لوح واحد</label>
+            <label><input type="radio" name="boardMode" value="hub" /> فئة واحدة في كل مرة</label>
+          </div>
+        </div>
+
+        <details class="acc">
+          <summary>قسّملي الفرق تلقائياً</summary>
+          <div class="acc__body">
+            <label class="field">
+              <span class="field__label">أسماء اللاعبين (اسم لكل سطر)</span>
+              <textarea id="playersPool" rows="4" placeholder="أحمد&#10;سارة&#10;فيصل&#10;..."></textarea>
+            </label>
+            <button class="btn" data-action="split-teams">اقسم الفرق</button>
+            <div id="splitResult" class="split-result"></div>
+          </div>
+        </details>
+      </div>
 
       <div class="teams">
         <div class="team-card">
@@ -57,19 +79,9 @@
         </div>
       </div>
 
-      <details class="acc">
-        <summary>قسّملي الفرق تلقائياً</summary>
-        <div class="acc__body">
-          <label class="field">
-            <span class="field__label">أسماء اللاعبين (اسم لكل سطر)</span>
-            <textarea id="playersPool" rows="6" placeholder="أحمد&#10;سارة&#10;فيصل&#10;..."></textarea>
-          </label>
-          <button class="btn" data-action="split-teams">اقسم الفرق</button>
-          <div id="splitResult" class="split-result"></div>
-        </div>
-      </details>
-
-      <button class="btn btn--primary btn--xl" data-action="go-categories">اختر الفئات</button>
+      <div class="setup__cta">
+        <button class="btn btn--primary btn--xl" data-action="go-categories">اختر الفئات</button>
+      </div>
     </div>
   </section>
 
@@ -125,6 +137,85 @@
         <span id="turnLabel">دور <b id="turnTeamName">الفريق الأول</b></span>
       </div>
       <div class="lifelines-bar" data-team="2" id="ll2"></div>
+    </footer>
+  </section>
+
+  <!-- ========== HUB (Mode B — pick a category) ========== -->
+  <section class="screen screen--board" data-screen="hub" hidden>
+    <header class="topbar topbar--board">
+      <button class="iconbtn" data-action="home-confirm" title="إنهاء">✕</button>
+      <div class="score-pair">
+        <div class="score score--t1">
+          <span class="score__name" id="hT1Name">الفريق الأول</span>
+          <button class="score__btn" data-action="edit-score" data-team="1">
+            <span id="hT1Score">0</span>
+          </button>
+          <span class="score__turn">الدور</span>
+        </div>
+        <img class="topbar__logo" src="assets/logo/shift-coral.png" alt="SHIFT" />
+        <div class="score score--t2">
+          <span class="score__name" id="hT2Name">الفريق الثاني</span>
+          <button class="score__btn" data-action="edit-score" data-team="2">
+            <span id="hT2Score">0</span>
+          </button>
+          <span class="score__turn">الدور</span>
+        </div>
+      </div>
+      <button class="iconbtn" data-action="undo" title="تراجع">↶</button>
+    </header>
+
+    <div class="hub hub--mode-b" id="hubBView">
+      <div class="hub__grid" id="hubBGrid"></div>
+    </div>
+
+    <footer class="board__foot">
+      <div class="lifelines-bar" data-team="1" id="hLl1"></div>
+      <div class="board__turn">
+        <span>دور <b id="hubTurnTeamName">الفريق الأول</b></span>
+      </div>
+      <div class="lifelines-bar" data-team="2" id="hLl2"></div>
+    </footer>
+  </section>
+
+  <!-- ========== STAGE (Mode B — pick a difficulty) ========== -->
+  <section class="screen screen--board" data-screen="stage" hidden>
+    <header class="topbar topbar--board">
+      <button class="iconbtn" data-action="back-hub" title="رجوع">‹</button>
+      <div class="score-pair">
+        <div class="score score--t1">
+          <span class="score__name" id="sT1Name">الفريق الأول</span>
+          <button class="score__btn" data-action="edit-score" data-team="1">
+            <span id="sT1Score">0</span>
+          </button>
+          <span class="score__turn">الدور</span>
+        </div>
+        <img class="topbar__logo" src="assets/logo/shift-coral.png" alt="SHIFT" />
+        <div class="score score--t2">
+          <span class="score__name" id="sT2Name">الفريق الثاني</span>
+          <button class="score__btn" data-action="edit-score" data-team="2">
+            <span id="sT2Score">0</span>
+          </button>
+          <span class="score__turn">الدور</span>
+        </div>
+      </div>
+      <button class="iconbtn" data-action="undo" title="تراجع">↶</button>
+    </header>
+
+    <div class="stage" id="stageView">
+      <div class="stage__col" id="stageColLeft"></div>
+      <div class="stage__card" id="stageCenter">
+        <div class="stage__card__emoji" id="stageEmoji">—</div>
+        <div class="stage__card__name" id="stageName">—</div>
+      </div>
+      <div class="stage__col" id="stageColRight"></div>
+    </div>
+
+    <footer class="board__foot">
+      <div class="lifelines-bar" data-team="1" id="sLl1"></div>
+      <div class="board__turn">
+        <span>دور <b id="stageTurnTeamName">الفريق الأول</b></span>
+      </div>
+      <div class="lifelines-bar" data-team="2" id="sLl2"></div>
     </footer>
   </section>
 
