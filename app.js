@@ -19,22 +19,37 @@
     activeLifeline: null,     // highlight which lifeline is "in effect" for the current question
     answerRevealed: false,
     timer: { running: false, remaining: 60, intervalId: null, max: 60 },
-    history: []               // undo stack (snapshots)
+    history: [],              // undo stack (snapshots)
+    boardMode: "all",         // "all" | "hub" — chosen on setup
+    activeCategoryId: null    // hub→stage selection in mode "hub"
   };
 
   /* ------------ Helpers ------------ */
   const $ = (sel, root=document) => root.querySelector(sel);
   const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 
-  const SCREENS = ["landing","setup","categories","board","question","results"];
+  const SCREENS = ["landing","setup","categories","board","hub","stage","question","results"];
+  const NO_SCROLL = new Set(["setup","categories","board","hub","stage","question"]);
   function show(screen){
     state.screen = screen;
     SCREENS.forEach(s => {
       const el = document.querySelector(`[data-screen="${s}"]`);
       if (el) el.hidden = (s !== screen);
     });
-    document.body.classList.toggle("no-scroll", screen === "board");
+    document.body.classList.toggle("no-scroll", NO_SCROLL.has(screen));
     window.scrollTo({top:0, behavior:"instant"});
+  }
+  function currentBoardScreen(){
+    return state.boardMode === "hub"
+      ? (state.activeCategoryId ? "stage" : "hub")
+      : "board";
+  }
+  function renderCurrentBoard(){
+    if (state.boardMode === "hub") {
+      if (state.activeCategoryId) renderStage(); else renderHub();
+    } else {
+      renderBoard();
+    }
   }
 
   function pushHistory(){
@@ -44,7 +59,8 @@
       turn: state.turn,
       board: state.board.map(c => ({ ...c })),
       activeCellIndex: state.activeCellIndex,
-      answerRevealed: state.answerRevealed
+      answerRevealed: state.answerRevealed,
+      activeCategoryId: state.activeCategoryId
     };
     state.history.push(snap);
     if (state.history.length > 40) state.history.shift();
@@ -57,6 +73,7 @@
     state.board = snap.board;
     state.activeCellIndex = snap.activeCellIndex;
     state.answerRevealed = snap.answerRevealed;
+    state.activeCategoryId = snap.activeCategoryId ?? null;
     renderAll();
   }
 
@@ -268,8 +285,114 @@
   }
 
   function renderBoardLifelines(){
+    renderLifelinesIntoBars("ll", "");
+  }
+
+  /* ---- Mode B: Hub ---- */
+  /* Mode B hub now renders the same 6 cells inline as Mode A, with a bigger
+     emoji "header" that drills into the cinematic Stage view. Cell clicks go
+     directly to the question. */
+  function renderHub(){
+    renderBoardChromeFor("hub", "h");
+    const grid = document.getElementById("hubBGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    state.selectedCats.forEach(catId => {
+      const cat = CATEGORIES.find(c => c.id === catId);
+      const cells = state.board.filter(c => c.catId === catId);
+      // Same ordering as Mode A: 200/400/600 across each row, two rows
+      const ordered = [cells[0], cells[2], cells[4], cells[1], cells[3], cells[5]];
+      const usedCount = cells.filter(c => c.used).length;
+      const allDone = usedCount === cells.length;
+
+      const cellsHTML = ordered.map(c => {
+        const idx = state.board.indexOf(c);
+        return `<button type="button"
+                  class="hub-tile__cell${c.used ? " used" : ""}"
+                  data-diff="${c.difficulty}" data-idx="${idx}"
+                  ${c.used ? "disabled" : ""}>${c.points}</button>`;
+      }).join("");
+
+      const tile = document.createElement("article");
+      tile.className = "hub-tile" + (allDone ? " complete" : "");
+      tile.innerHTML = `
+        <button type="button" class="hub-tile__head"
+                data-action="pick-category" data-cat="${catId}"
+                title="عرض الفئة">
+          <span class="hub-tile__art">${cat?.emoji || "❓"}</span>
+          <span class="hub-tile__name">${cat?.name  || catId}</span>
+        </button>
+        <div class="hub-tile__cells">${cellsHTML}</div>
+      `;
+
+      tile.querySelectorAll(".hub-tile__cell:not(.used)").forEach(btn => {
+        btn.addEventListener("click", () => openQuestion(parseInt(btn.dataset.idx, 10)));
+      });
+      grid.appendChild(tile);
+    });
+    renderLifelinesIntoBars("hLl", "");
+  }
+
+  /* ---- Mode B: Stage ---- */
+  function renderStage(){
+    renderBoardChromeFor("stage", "s");
+    const cat = CATEGORIES.find(c => c.id === state.activeCategoryId);
+    document.getElementById("stageEmoji").textContent = cat?.emoji || "❓";
+    document.getElementById("stageName").textContent  = cat?.name  || state.activeCategoryId || "";
+
+    const cellsForCat = state.board
+      .map((c,i) => ({ ...c, idx:i }))
+      .filter(c => c.catId === state.activeCategoryId);
+
+    const ORDER = ["easy","medium","hard"];
+    const POINTS = { easy: 200, medium: 400, hard: 600 };
+    const turnTeam = state.turn; // 0 or 1
+
+    const renderCol = (containerId, sideIdx) => {
+      const col = document.getElementById(containerId);
+      col.innerHTML = "";
+      ORDER.forEach(diff => {
+        const matches = cellsForCat.filter(c => c.difficulty === diff);
+        const cell = matches[sideIdx];
+        if (!cell) return;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "hub-tile__cell" + (cell.used ? " used" : "");
+        btn.dataset.diff = diff;
+        btn.dataset.idx  = String(cell.idx);
+        btn.textContent = cell.points || POINTS[diff];
+        if (cell.used) btn.disabled = true;
+        else btn.addEventListener("click", () => openQuestion(cell.idx));
+        col.appendChild(btn);
+      });
+    };
+    renderCol("stageColLeft",  turnTeam);
+    renderCol("stageColRight", turnTeam === 0 ? 1 : 0);
+
+    renderLifelinesIntoBars("sLl", "");
+  }
+
+  function renderBoardChromeFor(scope, prefix){
+    const t1n = document.getElementById(prefix + "T1Name");
+    const t2n = document.getElementById(prefix + "T2Name");
+    const t1s = document.getElementById(prefix + "T1Score");
+    const t2s = document.getElementById(prefix + "T2Score");
+    if (t1n) t1n.textContent = state.teams[0].name;
+    if (t2n) t2n.textContent = state.teams[1].name;
+    if (t1s) t1s.textContent = state.teams[0].score;
+    if (t2s) t2s.textContent = state.teams[1].score;
+    const root = document.querySelector(`[data-screen="${scope}"]`);
+    if (!root) return;
+    root.querySelector(".score--t1")?.classList.toggle("is-turn", state.turn === 0);
+    root.querySelector(".score--t2")?.classList.toggle("is-turn", state.turn === 1);
+    const turnEl = document.getElementById(scope + "TurnTeamName");
+    if (turnEl) turnEl.textContent = state.teams[state.turn].name;
+  }
+
+  function renderLifelinesIntoBars(prefix){
     [1,2].forEach(n => {
-      const root = document.getElementById("ll" + n);
+      const root = document.getElementById(prefix + n);
+      if (!root) return;
       root.innerHTML = "";
       const team = state.teams[n - 1];
       team.lifelines.forEach(id => {
@@ -387,8 +510,14 @@
             // pass turn
             state.turn = 1 - state.turn;
             renderQLifelines();
-            show("board");
-            renderBoard();
+            // If in Mode B and this category is now exhausted, return to hub
+            if (state.boardMode === "hub") {
+              const cat = state.activeCategoryId;
+              const remaining = state.board.filter(c => c.catId === cat && !c.used).length;
+              if (remaining === 0) state.activeCategoryId = null;
+            }
+            show(currentBoardScreen());
+            renderCurrentBoard();
             return;
           }
           renderQLifelines();
@@ -452,8 +581,14 @@
       renderResults();
       return;
     }
-    show("board");
-    renderBoard();
+    // Mode B: return to stage if category has cells left, otherwise to hub
+    if (state.boardMode === "hub") {
+      const cat = state.activeCategoryId;
+      const remaining = state.board.filter(c => c.catId === cat && !c.used).length;
+      if (remaining === 0) state.activeCategoryId = null;
+    }
+    show(currentBoardScreen());
+    renderCurrentBoard();
   }
 
   function passTurn(){
@@ -562,7 +697,7 @@
           if (Number.isFinite(v)){
             pushHistory();
             team.score = v;
-            renderBoard();
+            renderCurrentBoard();
           }
         }}
       ]
@@ -573,6 +708,8 @@
   function renderAll(){
     renderLifelineChoosers();
     if (state.screen === "board") renderBoard();
+    if (state.screen === "hub")   renderHub();
+    if (state.screen === "stage") renderStage();
     if (state.screen === "question") { renderQuestion(); renderTimer(); }
   }
 
@@ -595,6 +732,8 @@
           flash("يرجى اختيار ٣ وسائل مساعدة لكل فريق.");
           return;
         }
+        const modeRadio = document.querySelector('input[name="boardMode"]:checked');
+        state.boardMode = modeRadio ? modeRadio.value : "all";
         show("categories"); renderCategoryGroups(); break;
       case "back-setup":
         show("setup"); renderLifelineChoosers(); break;
@@ -602,8 +741,14 @@
         splitTeams(); break;
       case "go-board":
         if (state.selectedCats.length !== 6){ flash("اختر ٦ فئات."); return; }
-        buildBoard(); state.turn = 0; state.history = [];
-        show("board"); renderBoard(); break;
+        buildBoard(); state.turn = 0; state.history = []; state.activeCategoryId = null;
+        show(currentBoardScreen()); renderCurrentBoard(); break;
+      case "pick-category":
+        state.activeCategoryId = t.dataset.cat;
+        show("stage"); renderStage(); break;
+      case "back-hub":
+        state.activeCategoryId = null;
+        show("hub"); renderHub(); break;
       case "home-confirm":
         openModal({
           title: "إنهاء اللعبة؟",
@@ -619,7 +764,7 @@
       case "undo":
         undo(); break;
       case "back-board":
-        show("board"); renderBoard(); break;
+        show(currentBoardScreen()); renderCurrentBoard(); break;
       case "timer-toggle": toggleTimer(); break;
       case "timer-reset": resetTimer(); break;
       case "pass-turn": passTurn(); break;
