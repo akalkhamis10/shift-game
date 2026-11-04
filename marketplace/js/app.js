@@ -3,13 +3,14 @@ import * as S from "./store.js";
 import * as V from "./views.js";
 import { openModal, closeModal, modalOpen, toast, formData, fileToDataURL, download } from "./ui.js";
 import { imgSrc, artSVG } from "./art.js";
+import * as M from "./media.js";
 
 const app = document.getElementById("app");
 
 // transient UI state (not persisted)
 let modal = null; // { type, id }
-let pendingImage = null; // entry upload preview
-let deliverImage = null; // direct-hire delivery preview
+let pendingMedia = null; // entry upload: { media, image, src, duration, peaks }
+let deliverMedia = null; // direct-hire delivery upload (same shape)
 let draft = loadDraft();
 
 function loadDraft() { try { return JSON.parse(sessionStorage.getItem("marsam:draft") || "{}"); } catch { return {}; } }
@@ -40,7 +41,7 @@ function view(route, me) {
       if (step > 3 && !draft.package) step = 3;
       return V.launchPage(step, draft, me);
     }
-    case "projects": return V.projectPage(b, me, deliverImage);
+    case "projects": return V.projectPage(b, me, deliverMedia);
     case "dashboard": return V.dashboard(me, q);
     case "notifications": return V.notificationsPage(me);
     case "login": return me && !q.switch ? V.dashboard(me, q) : V.loginPage(q);
@@ -57,10 +58,11 @@ function render() {
   app.innerHTML = `${V.demoBar(me)}${V.header(me, route.path)}<main id="main">${view(route, me)}</main>${V.footer()}`;
   if (route.path !== lastPath) {
     window.scrollTo(0, 0);
-    if (route.path.startsWith("/projects")) deliverImage = null;
+    if (route.path.startsWith("/projects")) deliverMedia = null;
     lastPath = route.path;
   }
   syncModal(route, me);
+  M.hydrate(document);
 }
 
 /** Keep the modal in sync with ?entry= and refresh its content after store changes. */
@@ -72,7 +74,7 @@ function syncModal(route, me) {
   }
   if (modal && modal.type === "entry" && modalOpen()) {
     const body = document.querySelector(".modal-body");
-    if (body) body.innerHTML = String(V.entryModal(modal.id, me));
+    if (body) { body.innerHTML = String(V.entryModal(modal.id, me)); M.hydrate(body); }
   }
 }
 
@@ -91,33 +93,51 @@ function showEntry(id) {
   modal = { type: "entry", id };
   setQuery("entry", id);
   const me = S.currentUser();
+  M.stopSpeaking();
   if (modalOpen()) document.querySelector(".modal-body").innerHTML = String(V.entryModal(id, me));
   else openModal(String(V.entryModal(id, me)), { wide: true });
+  M.hydrate(document);
 }
 
 function dismissModal() {
   if (modal?.type === "entry") setQuery("entry", "");
   modal = null;
-  pendingImage = null;
+  pendingMedia = null;
+  M.stopSpeaking();
   closeModal();
 }
 
 function showModal(type, id, content, opts) {
   modal = { type, id };
   openModal(String(content), opts);
+  M.hydrate(document);
 }
 
 function refreshSubmitModal() {
   if (modal?.type !== "submit") return;
   const form = document.querySelector('[data-form="submit-entry"]');
   const keep = form ? formData(form) : {};
-  document.querySelector(".modal-body").innerHTML = String(V.submitModal(modal.id, pendingImage));
+  document.querySelector(".modal-body").innerHTML = String(V.submitModal(modal.id, pendingMedia));
   const f2 = document.querySelector('[data-form="submit-entry"]');
-  for (const [k, v] of Object.entries(keep)) {
-    const el = f2.elements[k];
-    if (!el || el.type === "file") continue;
-    if (el.type === "checkbox") el.checked = !!v; else el.value = v;
+  for (const el of f2.elements) {
+    if (!el.name || el.type === "file" || !(el.name in keep)) continue;
+    const v = [].concat(keep[el.name]);
+    if (el.type === "checkbox") el.checked = v.includes(el.value);
+    else el.value = v[0];
   }
+  M.hydrate(f2);
+}
+
+function demoMedia(media, contest) {
+  const seed = Math.random().toString(36).slice(2, 9);
+  if (media === "video") return { media, image: `art:${seed}`, src: `demo-video:${seed}:`, duration: Number(contest?.specs?.duration) || 30 };
+  if (media === "audio") {
+    const voice = contest && ["voice", "avatar"].includes(contest.category);
+    return voice
+      ? { media, image: `art:${seed}:waves`, src: `demo-voice:${seed}`, duration: Number(contest.specs?.duration) || 30, script: contest.specs?.script || "", peaks: M.demoPeaks(seed) }
+      : { media, image: `art:${seed}:rings`, src: `demo-music:${seed}`, duration: 12, peaks: M.demoPeaks(seed) };
+  }
+  return { media: "image", image: `art:${seed}` };
 }
 
 /** Run a store mutation and surface validation errors as toasts. */
@@ -137,30 +157,31 @@ const actions = {
   "close-modal": () => { if (modal?.type === "pick") { const id = modal.id; modal = null; closeModal(); showEntry(id); } else dismissModal(); },
   "modal-backdrop": (el, ev) => { if (ev.target === el) actions["close-modal"](); },
   "toggle-nav": () => document.getElementById("nav")?.classList.toggle("open"),
-  "reset-demo": () => { if (confirm("إعادة كل بيانات العرض لحالتها الأصلية؟")) { draft = {}; saveDraft(); S.resetDemo(); toast("أُعيد ضبط البيانات"); go("#/"); } },
+  "reset-demo": () => { if (confirm("إعادة كل بيانات العرض لحالتها الأصلية؟")) { draft = {}; saveDraft(); M.clearBlobs(); S.resetDemo(); toast("أُعيد ضبط البيانات"); go("#/"); } },
   logout: () => { S.logout(); toast("تم تسجيل الخروج"); go("#/"); },
   "login-as": (el) => { S.login(el.dataset.id); const next = parse().q.next; toast(`أهلًا ${S.currentUser().name}`); go(next && next.startsWith("#/") ? next : "#/dashboard"); },
   "open-entry": (el) => showEntry(el.dataset.id),
   rate: (el) => attempt(() => S.rateEntry(el.dataset.id, Number(el.dataset.value))),
   finalist: (el) => attempt(() => S.toggleFinalist(el.dataset.id)),
   eliminate: (el) => attempt(() => S.toggleEliminate(el.dataset.id)),
-  withdraw: (el) => { if (confirm("سحب التصميم نهائيًا من المسابقة؟")) { if (attempt(() => S.withdrawEntry(el.dataset.id), "تم سحب التصميم")) dismissModal(); } },
-  "admin-remove": (el) => { const r = prompt("سبب الإزالة:", "مخالفة سياسة الأعمال المولّدة"); if (r !== null && attempt(() => S.removeEntryAsAdmin(el.dataset.id, r), "أُزيل التصميم")) dismissModal(); },
+  withdraw: (el) => { if (confirm("سحب المشاركة نهائيًا من المسابقة؟")) { if (attempt(() => S.withdrawEntry(el.dataset.id), "تم سحب المشاركة")) dismissModal(); } },
+  "admin-remove": (el) => { const r = prompt("سبب الإزالة:", "مخالفة سياسة الأعمال المولّدة"); if (r !== null && attempt(() => S.removeEntryAsAdmin(el.dataset.id, r), "أُزيلت المشاركة")) dismissModal(); },
   "pick-winner": (el) => { const id = el.dataset.id; setQuery("entry", ""); closeModal(); showModal("pick", id, V.pickWinnerModal(id)); },
   "submit-entry": (el) => {
     if (!S.currentUser()) return go("#/login?role=artist");
-    pendingImage = null;
+    pendingMedia = null;
     showModal("submit", el.dataset.id, V.submitModal(el.dataset.id, null), { wide: false });
   },
-  "demo-art": () => { pendingImage = `art:${Math.random().toString(36).slice(2, 9)}`; refreshSubmitModal(); },
-  "demo-art-deliver": () => { deliverImage = `art:${Math.random().toString(36).slice(2, 9)}`; render(); },
+  "demo-art": () => { const c = S.contest(modal.id); pendingMedia = demoMedia(S.mediaOf(c), c); refreshSubmitModal(); },
+  "demo-art-deliver": () => { deliverMedia = demoMedia("image"); render(); },
+  speak: (el) => { if (!M.speak(el.dataset.text)) toast("المتصفح لا يدعم القراءة الصوتية", "err"); },
   "edit-brief": (el) => showModal("brief", el.dataset.id, V.editBriefModal(S.contest(el.dataset.id))),
   "close-submissions": (el) => { if (confirm("إغلاق المشاركات الآن والانتقال لمرحلة التحكيم؟")) attempt(() => S.closeSubmissions(el.dataset.id), "أُغلقت المشاركات"); },
   extend: (el) => attempt(() => S.extendDeadline(el.dataset.id, 2), "مُدّدت المسابقة يومين"),
   refund: (el) => { if (confirm("استرداد المبلغ كاملًا وإلغاء المسابقة دون فائز؟")) attempt(() => S.requestRefund(el.dataset.id), "تم الاسترداد — سيصلك المبلغ خلال 3–5 أيام عمل"); },
   handover: (el) => showModal("handover", el.dataset.id, V.handoverModal(S.contest(el.dataset.id)), { wide: true }),
-  "download-entry": (el) => downloadImage(S.entry(el.dataset.id).image, `marsam-${el.dataset.id}`),
-  "download-hire": (el) => downloadImage(S.hire(el.dataset.id).delivery.image, `marsam-${el.dataset.id}`),
+  "download-entry": (el) => downloadMedia(S.entry(el.dataset.id), `marsam-${el.dataset.id}`),
+  "download-hire": (el) => downloadMedia(S.hire(el.dataset.id).delivery, `marsam-${el.dataset.id}`),
   "download-license": (el) => download(`license-${el.dataset.id}.txt`, V.licenseText(S.contest(el.dataset.id))),
   hire: (el) => showModal("hire", el.dataset.id, V.hireModal(S.user(el.dataset.id))),
   "hire-accept": (el) => attempt(() => S.respondHire(el.dataset.id, true), "تم قبول المشروع"),
@@ -168,6 +189,26 @@ const actions = {
   "hire-revision": (el) => { const n = prompt("ما التعديل المطلوب؟"); if (n !== null) attempt(() => S.requestRevision(el.dataset.id, n), "أُرسل طلب التعديل"); },
   "mark-read": () => S.markAllRead(),
 };
+
+const EXT = { "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/ogg": "ogg", "audio/webm": "webm" };
+async function downloadMedia(x, name) {
+  const src = x.src || "";
+  try {
+    if (src.startsWith("demo-video:")) { const [, seed, kind] = src.split(":"); return download(`${name}-preview.svg`, M.demoVideoSVG(seed, kind), "image/svg+xml"); }
+    if (src.startsWith("demo-voice:")) return download(`${name}-script.txt`, x.script || "");
+    if (src) {
+      const blob = await M.blobFor(src);
+      if (!blob) throw new Error("الملف غير متاح في هذا المتصفح");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${name}.${EXT[blob.type] || blob.type.split("/")[1] || "bin"}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      return;
+    }
+    downloadImage(x.image, name);
+  } catch (e) { toast(e.message, "err"); }
+}
 
 function downloadImage(ref, name) {
   if (ref.startsWith("art:")) {
@@ -211,15 +252,15 @@ const forms = {
     }
   },
   "submit-entry": (d, f) => {
-    const r = attempt(() => S.submitEntry(f.dataset.id, { image: pendingImage, title: d.title, tool: d.tool, prompt: d.prompt, note: d.note, agree: d.agree }), "تم إرسال تصميمك 🎉");
-    if (r) { pendingImage = null; modal = null; closeModal(); go(`#/contests/${f.dataset.id}?tab=entries`); }
+    const r = attempt(() => S.submitEntry(f.dataset.id, { ...(pendingMedia || {}), title: d.title, tool: d.tool, prompt: d.prompt, note: d.note, agree: d.agree }), "تم إرسال مشاركتك 🎉");
+    if (r) { pendingMedia = null; modal = null; closeModal(); go(`#/contests/${f.dataset.id}?tab=entries`); }
   },
-  "edit-brief": (d, f) => { if (attempt(() => S.updateBrief(f.dataset.id, d), "تم تحديث الموجز")) dismissModal(); },
+  "edit-brief": (d, f) => { if (attempt(() => S.updateBrief(f.dataset.id, { ...d, specs: specsFrom(d) }), "تم تحديث الموجز")) dismissModal(); },
   hire: (d, f) => {
     const h = attempt(() => S.createHire(f.dataset.id, d), "أُرسل الطلب للفنان");
     if (h) { modal = null; closeModal(); go(`#/projects/${h.id}`); }
   },
-  deliver: (d, f) => { if (attempt(() => S.deliverHire(f.dataset.id, { image: deliverImage, note: d.note, prompt: d.prompt, tool: d.tool }), "تم التسليم")) deliverImage = null; },
+  deliver: (d, f) => { if (attempt(() => S.deliverHire(f.dataset.id, { ...(deliverMedia || {}), note: d.note, prompt: d.prompt, tool: [].concat(d.tool || []).join(" + ") }), "تم التسليم")) deliverMedia = null; },
   "approve-hire": (d, f) => attempt(() => S.approveHire(f.dataset.id, d), "تم الاعتماد وتحويل المبلغ للفنان"),
   "hire-msg": (d, f) => attempt(() => S.addHireMessage(f.dataset.id, d.text)),
   withdraw: (d) => attempt(() => S.withdraw(d.iban), "تم طلب السحب — يصل خلال 1–2 يوم عمل"),
@@ -231,7 +272,8 @@ const forms = {
   wizard: (d, f) => {
     const step = Number(f.dataset.step);
     if (step === 1) draft.category = d.category;
-    if (step === 2) Object.assign(draft, { title: d.title, brand: d.brand, brief: d.brief, audience: d.audience, styles: [].concat(d.styles || []), colors: d.colors, usage: d.usage, avoid: d.avoid });
+    if (step === 1 && draft.specCat !== d.category) { draft.specs = {}; draft.specCat = d.category; }
+    if (step === 2) Object.assign(draft, { title: d.title, brand: d.brand, brief: d.brief, audience: d.audience, styles: [].concat(d.styles || []), colors: d.colors, usage: d.usage, avoid: d.avoid, specs: specsFrom(d) });
     if (step === 3) Object.assign(draft, { package: d.package, guaranteed: !!d.guaranteed, blind: !!d.blind, featured: !!d.featured, days: Number(d.days) });
     saveDraft();
     go(`#/launch?step=${step + 1}`);
@@ -249,12 +291,40 @@ document.addEventListener("submit", (ev) => {
   forms[f.dataset.form]?.(formData(f), f);
 });
 
+function specsFrom(d) {
+  const out = {};
+  for (const [k, v] of Object.entries(d)) if (k.startsWith("spec_")) out[k.slice(5)] = v;
+  return out;
+}
+
 // ---------------------------------------------------------------- change handlers (selects, files)
+const kindOf = (file) => (file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : file.type.startsWith("image/") ? "image" : "");
+
+async function readMedia(file) {
+  const kind = kindOf(file);
+  if (kind === "image") return { media: "image", image: await fileToDataURL(file) };
+  if (!kind) throw new Error("نوع الملف غير مدعوم");
+  if (file.size > M.LIMITS[kind]) throw new Error(`الملف أكبر من ${Math.round(M.LIMITS[kind] / 1048576)}MB`);
+  toast(kind === "video" ? "جارٍ تجهيز الفيديو…" : "جارٍ تحليل الصوت…");
+  if (kind === "video") {
+    const info = await M.probeVideo(file);
+    const src = await M.putBlob(file);
+    return { media: "video", image: info.poster || `art:${src.slice(4)}`, src, duration: info.duration };
+  }
+  const info = await M.probeAudio(file);
+  const src = await M.putBlob(file);
+  return { media: "audio", image: `art:${src.slice(4)}:waves`, src, duration: info.duration, peaks: info.peaks };
+}
+
 async function handleFile(file, which) {
   try {
-    const url = await fileToDataURL(file);
-    if (which === "entry") { pendingImage = url; refreshSubmitModal(); }
-    else { deliverImage = url; render(); }
+    if (which === "entry") {
+      const want = S.mediaOf(S.contest(modal.id));
+      if (kindOf(file) !== want) throw new Error(`هذه المسابقة تستقبل ${S.MEDIA[want].noun} فقط`);
+    }
+    const m = await readMedia(file);
+    if (which === "entry") { if (modal?.type !== "submit") return; pendingMedia = m; refreshSubmitModal(); }
+    else { deliverMedia = m; render(); }
   } catch (e) { toast(e.message, "err"); }
 }
 
@@ -294,7 +364,7 @@ document.addEventListener("drop", (ev) => {
 S.init();
 S.subscribe(render);
 window.addEventListener("hashchange", () => {
-  if (modalOpen() && !parse().q.entry) { modal = null; pendingImage = null; closeModal(); }
+  if (modalOpen() && !parse().q.entry) { modal = null; pendingMedia = null; closeModal(); }
   render();
 });
 render();

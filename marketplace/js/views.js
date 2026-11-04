@@ -2,6 +2,7 @@
 import * as S from "./store.js";
 import { html, raw, money, num, timeLeft, timeAgo, dateStr, stars } from "./ui.js";
 import { imgSrc, avatarURI } from "./art.js";
+import { demoVideoURI, demoPeaks, fmtDur } from "./media.js";
 
 // ---------------------------------------------------------------- icons
 const P = {
@@ -24,6 +25,10 @@ const P = {
   arrow: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
   doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  play: '<path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor" stroke="none"/>',
+  video: '<rect x="2" y="5" width="15" height="14" rx="2"/><path d="M17 10l5-3v10l-5-3"/>',
+  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
   briefcase: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>',
 };
 export const icon = (n) => raw(`<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ""}</svg>`);
@@ -50,6 +55,83 @@ const HIRE_STATUS = {
 const TX = { escrow: "دفع (ضمان)", release: "تحرير ضمان", refund: "استرداد", payout: "أرباح", withdrawal: "سحب", fee: "عمولة" };
 
 const empty = (title, sub = "", cta = "") => html`<div class="empty"><div class="empty-art"></div><h3>${title}</h3>${sub ? html`<p>${sub}</p>` : ""}${cta}</div>`;
+
+// ---------------------------------------------------------------- media
+export const mediaIcon = (m) => ({ video: "video", audio: "music" })[m] || "image";
+const isVoice = (x) => !!(x.script || x.src?.startsWith("demo-voice:"));
+
+export function waveSVG(peaks, cls = "") {
+  const w = 4, gap = 2, n = peaks.length;
+  const bars = peaks.map((p, i) => { const h = Math.max(6, p * 100); return `<rect x="${i * (w + gap)}" y="${((100 - h) / 2).toFixed(1)}" width="${w}" height="${h.toFixed(1)}" rx="2"/>`; }).join("");
+  return raw(`<svg class="wave ${cls}" viewBox="0 0 ${n * (w + gap)} 100" preserveAspectRatio="none" aria-hidden="true">${bars}</svg>`);
+}
+
+/** Card thumbnail for any media (entry, delivery, or a contest cover). */
+function mediaThumb(x) {
+  const m = x.media || "image";
+  const dur = x.duration ? html`<span class="dur">${fmtDur(x.duration)}</span>` : "";
+  if (m === "video") return html`<img src="${imgSrc(x.image)}" alt="" loading="lazy"><span class="play-badge">${icon("play")}</span>${dur}`;
+  if (m === "audio") return html`<img class="audio-bg" src="${imgSrc(x.image)}" alt="" loading="lazy"><span class="audio-thumb">${icon(isVoice(x) ? "mic" : "music")}${waveSVG(x.peaks || demoPeaks(x.id || x.image, 36))}</span>${dur}`;
+  return html`<img src="${imgSrc(x.image)}" alt="" loading="lazy">`;
+}
+
+/** Full player for an entry / delivery. Video & audio sources are filled in by media.hydrate(). */
+export function mediaView(x, alt = "") {
+  const m = x.media || "image";
+  if (m === "video") {
+    if (x.src?.startsWith("demo-video:")) {
+      const [, seed, kind] = x.src.split(":");
+      return html`<div class="player"><img src="${demoVideoURI(seed, kind)}" alt="${alt}"><span class="demo-flag">${icon("play")} معاينة متحركة تجريبية · ${fmtDur(x.duration)}</span></div>`;
+    }
+    const poster = x.image && !x.image.startsWith("art:") ? x.image : "";
+    return html`<video class="player-video" controls playsinline preload="metadata" ${poster ? raw(`poster="${poster}"`) : ""} data-media-src="${x.src}" aria-label="${alt}"></video>`;
+  }
+  if (m === "audio") {
+    return html`<div class="player audio-player"><img class="audio-bg" src="${imgSrc(x.image)}" alt="">
+      <div class="audio-fg">${icon(isVoice(x) ? "mic" : "music")}${waveSVG(x.peaks || demoPeaks(x.id || x.image), "big")}
+        ${x.src?.startsWith("demo-voice:")
+          ? html`<button type="button" class="btn light" data-action="speak" data-text="${x.script || "عيّنة صوتية تجريبية"}">${icon("play")} استمع (قراءة آلية تجريبية)</button>`
+          : html`<audio controls preload="metadata" data-media-src="${x.src}" aria-label="${alt}"></audio>`}
+        ${x.duration ? html`<span class="dur-light">${fmtDur(x.duration)}</span>` : ""}
+      </div></div>`;
+  }
+  return html`<img src="${imgSrc(x.image)}" alt="${alt}">`;
+}
+
+const toolChips = (tool) => String(tool || "").split(" + ").filter(Boolean).map((t) => html`<span class="chip">${icon("sparkle")} ${t}</span>`);
+
+/** Tool checkboxes grouped by media (multi-select disclosure). */
+function toolPicker(name, list, selected = [], first = "") {
+  const sel = new Set([].concat(selected));
+  const groups = Object.entries(S.TOOLS).map(([m, ts]) => [m, ts.filter((t) => list.includes(t))]).filter(([, ts]) => ts.length)
+    .sort(([a], [b]) => (b === first) - (a === first));
+  return html`${groups.map(([m, ts]) => html`<div class="tool-group"><span class="muted tiny">${icon(mediaIcon(m))} ${S.MEDIA[m].name}</span>
+    <div class="chips pickable">${ts.map((t) => html`<label class="chip"><input type="checkbox" name="${name}" value="${t}" ${sel.has(t) ? raw("checked") : ""}> ${t}</label>`)}</div></div>`)}
+    ${list.includes("أخرى") ? html`<div class="chips pickable"><label class="chip"><input type="checkbox" name="${name}" value="أخرى" ${sel.has("أخرى") ? raw("checked") : ""}> أخرى</label></div>` : ""}`;
+}
+
+/** Category-specific brief inputs (duration, aspect, dialect, script…). */
+function specInputs(catId, values = {}) {
+  const fields = S.specFields(catId);
+  if (!fields.length) return "";
+  const input = (f) => {
+    const id = "sp_" + f.k, v = values[f.k] ?? f.def ?? "";
+    if (f.type === "select") return html`<select id="${id}" name="spec_${f.k}">${f.options.map(([val, lab]) => html`<option value="${val}" ${String(v) === val ? raw("selected") : ""}>${lab}</option>`)}</select>`;
+    if (f.type === "textarea") return html`<textarea id="${id}" name="spec_${f.k}" rows="3" placeholder="${f.placeholder || ""}" ${f.required ? raw("required") : ""}>${v}</textarea>`;
+    return html`<input id="${id}" name="spec_${f.k}" value="${v}" placeholder="${f.placeholder || ""}">`;
+  };
+  const short = fields.filter((f) => f.type === "select" || f.type === "text");
+  const long = fields.filter((f) => f.type === "textarea");
+  return html`<fieldset class="specs"><legend>${icon(mediaIcon(S.category(catId).media))} تفاصيل ${S.MEDIA[S.category(catId).media].noun}</legend>
+    <div class="spec-grid">${short.map((f) => html`<div><label for="sp_${f.k}">${f.label}</label>${input(f)}</div>`)}</div>
+    ${long.map((f) => html`<label for="sp_${f.k}">${f.label}${f.required ? " *" : ""}</label>${input(f)}`)}
+  </fieldset>`;
+}
+
+function categoryGroups(render) {
+  return html`${Object.values(S.MEDIA).map((m) => html`<div class="cat-group"><h3>${icon(mediaIcon(m.id))} ${m.name}</h3>
+    <div class="cats">${S.CATEGORIES.filter((c) => c.media === m.id).map(render)}</div></div>`)}`;
+}
 
 // ---------------------------------------------------------------- chrome
 export function demoBar(me) {
@@ -98,22 +180,26 @@ export function footer() {
 export function contestCard(c) {
   const st = S.status(c);
   const es = S.entriesOf(c.id);
-  const cover = c.winnerEntryId ? S.entry(c.winnerEntryId)?.image : c.cover;
+  const m = S.mediaOf(c);
+  const winner = c.winnerEntryId ? S.entry(c.winnerEntryId) : null;
+  const thumb = winner || { media: m, image: c.cover, id: c.id, duration: Number(c.specs?.duration) || 0, script: c.category === "voice" ? "1" : "" };
   return html`<a class="card ccard" href="#/contests/${c.id}">
-    <div class="ccard-img"><img src="${imgSrc(cover)}" alt="" loading="lazy">
+    <div class="ccard-img">${mediaThumb(thumb)}
       <div class="ccard-tags">${statusBadge(c)}${c.guaranteed ? html`<span class="badge dark">${icon("shield")} مضمونة</span>` : ""}${c.blind ? html`<span class="badge dark">${icon("lock")} سرية</span>` : ""}</div>
     </div>
     <div class="ccard-body">
-      <div class="muted small">${S.category(c.category).name} · ${c.brand}</div>
+      <div class="muted small">${S.category(c.category).icon} ${S.category(c.category).name} · ${c.brand}</div>
       <h3>${c.title}</h3>
       <div class="ccard-meta">
         <span class="prize">${money(c.prize)}</span>
-        <span class="muted small">${icon("image")} ${num(es.length)}</span>
+        <span class="muted small" title="عدد المشاركات">${icon(mediaIcon(m))} ${num(es.length)}</span>
         <span class="muted small">${icon("clock")} ${st === "open" ? timeLeft(c.deadline) : STATUS[st].t}</span>
       </div>
     </div>
   </a>`;
 }
+
+const specialties = (a) => Object.keys(S.MEDIA).filter((m) => a.tools.some((t) => S.TOOLS[m].includes(t)));
 
 function artistCard(a) {
   const st = S.artistStats(a.id);
@@ -128,7 +214,7 @@ function artistCard(a) {
       <span>${stars(st.rating)} <b>${st.rating ? st.rating.toFixed(1) : "—"}</b></span>
       <span>${icon("trophy")} ${num(st.wins)} فوز</span>
     </div>
-    <div class="chips">${a.tools.slice(0, 3).map((t) => html`<span class="chip">${t}</span>`)}</div>
+    <div class="chips">${specialties(a).map((m) => html`<span class="chip spec">${icon(mediaIcon(m))} ${S.MEDIA[m].noun}</span>`)}${a.tools.slice(0, 2).map((t) => html`<span class="chip">${t}</span>`)}</div>
   </a>`;
 }
 
@@ -138,12 +224,12 @@ function entryCard(e, c, me) {
   const fin = c.finalists.includes(e.id);
   const mine = me && me.id === e.artistId;
   return html`<button class="ecard ${e.status === "eliminated" ? "out" : ""} ${win ? "win" : ""}" data-action="open-entry" data-id="${e.id}">
-    <div class="ecard-img"><img src="${imgSrc(e.image)}" alt="تصميم رقم ${e.number}" loading="lazy">
+    <div class="ecard-img">${mediaThumb(e)}
       <div class="ecard-tags">
         ${win ? html`<span class="badge gold">${icon("trophy")} الفائز</span>` : ""}
         ${fin && !win ? html`<span class="badge violet">قائمة نهائية</span>` : ""}
         ${e.status === "eliminated" ? html`<span class="badge gray">مستبعد</span>` : ""}
-        ${mine ? html`<span class="badge blue">تصميمك</span>` : ""}
+        ${mine ? html`<span class="badge blue">مشاركتك</span>` : ""}
       </div>
     </div>
     <div class="ecard-foot">
@@ -164,8 +250,9 @@ export function home(me) {
   <section class="hero"><div class="wrap hero-in">
     <div class="hero-copy">
       <span class="eyebrow">${icon("sparkle")} سوق فنّ الذكاء الاصطناعي</span>
-      <h1>اطلب الفكرة، واستقبل عشرات التصاميم، <em>وادفع للأفضل فقط.</em></h1>
-      <p class="lead">أطلق مسابقة تصميم يتنافس فيها فنانو الذكاء الاصطناعي على تحقيق رؤيتك — شعارات، شخصيات، صور منتجات، بوسترات وموشن. أو وظّف فنانًا مباشرةً لمشروعك.</p>
+      <h1>اطلب الفكرة، واستقبل عشرات الأعمال، <em>وادفع للأفضل فقط.</em></h1>
+      <p class="lead">أطلق مسابقة يتنافس فيها صنّاع المحتوى بالذكاء الاصطناعي على تحقيق رؤيتك — تصاميم وصور، أفلام قصيرة وإعلانات فيديو، قصص متحركة وفيديو تعليمي، تعليق صوتي وموسيقى. أو وظّف مبدعًا مباشرةً لمشروعك.</p>
+      <div class="media-pills">${Object.values(S.MEDIA).map((m) => html`<a class="chip" href="#/contests?m=${m.id}">${icon(mediaIcon(m.id))} ${m.name}</a>`)}</div>
       <div class="hero-cta">
         <a class="btn primary lg" href="#/launch">أطلق مسابقة الآن</a>
         <a class="btn ghost lg" href="${me?.role === "artist" ? "#/contests" : "#/login?role=artist"}">${me?.role === "artist" ? "تصفّح المسابقات" : "انضم كفنان"}</a>
@@ -180,7 +267,7 @@ export function home(me) {
   <section class="statsbar"><div class="wrap statsbar-in">
     <div><b>${num(ps.artists)}</b><span>فنان معتمد</span></div>
     <div><b>${num(ps.contests)}</b><span>مسابقة</span></div>
-    <div><b>${num(ps.entries)}</b><span>تصميم مُقدَّم</span></div>
+    <div><b>${num(ps.entries)}</b><span>عمل مُقدَّم</span></div>
     <div><b>${money(ps.paidOut)}</b><span>دُفعت للفنانين</span></div>
   </div></section>
 
@@ -191,7 +278,7 @@ export function home(me) {
 
   <section class="sec alt"><div class="wrap">
     <div class="sec-head"><h2>ماذا تحتاج اليوم؟</h2></div>
-    <div class="cats">${S.CATEGORIES.map((c) => html`<a class="cat" href="#/launch?cat=${c.id}"><span class="cat-ic">${c.icon}</span><b>${c.name}</b><span class="muted small">${c.desc}</span></a>`)}</div>
+    ${categoryGroups((c) => html`<a class="cat" href="#/launch?cat=${c.id}"><span class="cat-ic">${c.icon}</span><b>${c.name}</b><span class="muted small">${c.desc}</span></a>`)}
   </div></section>
 
   <section class="sec"><div class="wrap">
@@ -210,7 +297,7 @@ export function home(me) {
   </div></section>
 
   <section class="sec"><div class="wrap"><div class="cta-band">
-    <div><h2>أنت فنان ذكاء اصطناعي؟</h2><p>شارك في مسابقات حقيقية بجوائز مضمونة، ابنِ ملفّك، واستقبل مشاريع مباشرة من الشركات.</p></div>
+    <div><h2>أنت صانع محتوى بالذكاء الاصطناعي؟</h2><p>مصمّم، صانع أفلام، معلّق صوتي أو مؤلف موسيقى — شارك في مسابقات بجوائز مضمونة، ابنِ ملفّك، واستقبل مشاريع مباشرة من الشركات.</p></div>
     <a class="btn light lg" href="${me ? "#/contests" : "#/login?role=artist"}">ابدأ المشاركة</a>
   </div></div></section>`;
 }
@@ -218,45 +305,52 @@ export function home(me) {
 function steps() {
   const st = [
     ["١", "اكتب الموجز", "صف فكرتك، جمهورك، والأسلوب الذي تحبه. اختر الباقة وادفع — المبلغ محفوظ في الضمان."],
-    ["٢", "استقبل التصاميم", "يقدّم الفنانون أعمالهم خلال أيام، مع الإفصاح عن أداة الذكاء الاصطناعي المستخدمة."],
-    ["٣", "قيّم ووجّه", "قيّم بالنجوم، علّق على كل تصميم، واختر قائمتك النهائية لتوجيه الفنانين."],
-    ["٤", "اختر الفائز", "تستلم الملفات والبرومبت وشهادة نقل الملكية، ويُحوَّل مبلغ الجائزة للفنان."],
+    ["٢", "استقبل الأعمال", "صور أو فيديو أو صوت — يقدّم المبدعون أعمالهم خلال أيام، مع الإفصاح عن كل أداة ذكاء اصطناعي استُخدمت."],
+    ["٣", "قيّم ووجّه", "شاهد واستمع، قيّم بالنجوم، علّق على كل مشاركة، واختر قائمتك النهائية."],
+    ["٤", "اختر الفائز", "تستلم الملف الأصلي والبرومبت وشهادة نقل الملكية، ويُحوَّل مبلغ الجائزة للفنان."],
   ];
   return html`<ol class="steps">${st.map(([n, t, d]) => html`<li><span class="step-n">${n}</span><h3>${t}</h3><p>${d}</p></li>`)}</ol>`;
 }
 
-function packages(selectable = false, selected = "") {
-  return html`<div class="pkgs">${S.PACKAGES.map((p) => html`
+function packages(selectable = false, selected = "", catId = "") {
+  const m = catId ? S.category(catId).media : "image";
+  const per = m === "video" ? 4 : m === "audio" ? 1.5 : 1;
+  return html`<div class="pkgs">${S.PACKAGES.map((p) => { const pp = catId ? S.pkgPrice(p.id, catId) : p; return html`
     <${raw(selectable ? "label" : "div")} class="pkg ${p.popular ? "popular" : ""} ${selected === p.id ? "selected" : ""}">
       ${selectable ? html`<input type="radio" name="package" value="${p.id}" ${selected === p.id ? raw("checked") : ""} required>` : ""}
       ${p.popular ? html`<span class="pkg-flag">الأكثر طلبًا</span>` : ""}
       <h3>${p.name}</h3>
-      <div class="pkg-price">${money(p.price)}</div>
-      <div class="muted small">جائزة الفنان: <b>${money(p.prize)}</b> · ${p.expected}</div>
+      <div class="pkg-price">${catId ? "" : html`<span class="muted small">من </span>`}${money(pp.price)}</div>
+      <div class="muted small">جائزة الفائز: <b>${money(pp.prize)}</b> · ≈ ${num(Math.round(p.expected / per))} مشاركة</div>
       <ul>${p.perks.map((x) => html`<li>${icon("check")} ${x}</li>`)}</ul>
-    </${raw(selectable ? "label" : "div")}>`)}</div>`;
+    </${raw(selectable ? "label" : "div")}>`; })}</div>`;
 }
 
 // ---------------------------------------------------------------- how
 export function how() {
   const faq = [
-    ["من يملك حقوق التصميم الفائز؟", "عند اختيار الفائز تنتقل الملكية الكاملة وحقوق الاستخدام التجاري للعميل، ويحصل على شهادة نقل ملكية موقّعة إلكترونيًا مع الملفات والبرومبت المستخدم."],
-    ["هل يجب الإفصاح عن أداة الذكاء الاصطناعي؟", "نعم. كل مشاركة تُرفق باسم الأداة (Midjourney، Flux، Firefly…)، ويُسلَّم البرومبت للعميل مع الملف الفائز. بعض الأدوات لها شروط ترخيص تجارية — الفنان مسؤول عن امتلاك اشتراك يسمح بالاستخدام التجاري."],
-    ["ماذا لو لم يعجبني أي تصميم؟", "إذا لم تكن الجائزة «مضمونة» يمكنك طلب استرداد كامل المبلغ بعد انتهاء فترة المشاركات وقبل اختيار الفائز."],
+    ["من يملك حقوق العمل الفائز؟", "عند اختيار الفائز تنتقل الملكية الكاملة وحقوق الاستخدام التجاري للعميل، ويحصل على شهادة نقل ملكية موقّعة إلكترونيًا مع الملفات والبرومبت المستخدم."],
+    ["هل يجب الإفصاح عن أداة الذكاء الاصطناعي؟", "نعم. كل مشاركة تُرفق بكل الأدوات المستخدمة — مثل Midjourney للصور، وVeo أو Runway للفيديو، وElevenLabs للصوت، وSuno للموسيقى — ويُسلَّم البرومبت للعميل مع العمل الفائز. الفنان مسؤول عن امتلاك اشتراك يسمح بالاستخدام التجاري."],
+    ["هل يمكن طلب فيديو أو صوت؟", "نعم: أفلام قصيرة، إعلانات فيديو، قصص متحركة، فيديو تعليمي، ريلز، موشن جرافيك، متحدث افتراضي، تعليق صوتي، موسيقى وجنغل، وبودكاست. تحدّد في الموجز المدة والمقاس واللهجة والنص، والسعر يتناسب مع حجم العمل."],
+    ["هل يُسمح باستنساخ الأصوات؟", "فقط صوت الفنان نفسه، أو صوت شخص لديه موافقة مكتوبة منه تُرفق عند التسليم. يُمنع تمامًا تقليد أصوات المشاهير والشخصيات العامة."],
+    ["ماذا لو لم يعجبني أي عمل؟", "إذا لم تكن الجائزة «مضمونة» يمكنك طلب استرداد كامل المبلغ بعد انتهاء فترة المشاركات وقبل اختيار الفائز."],
     ["ما هي المسابقة المضمونة؟", "تتعهد فيها باختيار فائز. تجذب عادةً ضعف عدد الفنانين لأن جهدهم مضمون المقابل."],
-    ["ما هي المسابقة السرية؟", "يرى كل فنان تصاميمه فقط ولا يرى أعمال المنافسين حتى نهاية المسابقة — مناسبة للأفكار الحساسة وتقلّل التقليد."],
+    ["ما هي المسابقة السرية؟", "يرى كل فنان مشاركاته فقط ولا يرى أعمال المنافسين حتى نهاية المسابقة — مناسبة للأفكار الحساسة وتقلّل التقليد."],
     ["كم عمولة المنصة؟", "في المسابقات: الفرق بين سعر الباقة والجائزة. في المشاريع المباشرة: 10% من ميزانية المشروع تُخصم من الفنان."],
   ];
-  return html`<section class="page-head"><div class="wrap"><h1>كيف تعمل مَرسم</h1><p class="lead">طريقتان للحصول على عمل إبداعي بالذكاء الاصطناعي: <b>مسابقة</b> يتنافس فيها الفنانون، أو <b>مشروع مباشر</b> مع فنان تختاره.</p></div></section>
+  return html`<section class="page-head"><div class="wrap"><h1>كيف تعمل مَرسم</h1><p class="lead">طريقتان للحصول على صور أو فيديو أو صوت بالذكاء الاصطناعي: <b>مسابقة</b> يتنافس فيها الفنانون، أو <b>مشروع مباشر</b> مع فنان تختاره.</p></div></section>
   <section class="sec"><div class="wrap">${steps()}</div></section>
   <section class="sec alt"><div class="wrap"><div class="sec-head"><h2>الباقات</h2></div>${packages()}
-    <p class="muted small center">إضافات اختيارية: مسابقة سرية +150 ر.س · ظهور مميّز +200 ر.س · الجائزة المضمونة مجانية.</p></div></section>
+    <p class="muted small center">الأسعار أعلاه للتصاميم الثابتة. الفيديو: من ×1 (ريلز) إلى ×2 (أفلام قصيرة) · الصوت: ×0.8 إلى ×1.<br>إضافات اختيارية: مسابقة سرية +150 ر.س · ظهور مميّز +200 ر.س · الجائزة المضمونة مجانية.</p></div></section>
   <section class="sec"><div class="wrap two-col">
     <div><h2>أسئلة شائعة</h2>${faq.map(([q, a]) => html`<details class="faq"><summary>${q}</summary><p>${a}</p></details>`)}</div>
     <div id="rules" class="card pad rules"><h2>${icon("flag")} سياسة الأعمال المولّدة</h2><ul>
       <li>يُمنع ذكر أسماء فنانين أحياء في البرومبت أو تقليد أسلوبهم المميّز عمدًا.</li>
       <li>يُمنع استخدام شعارات أو علامات تجارية أو شخصيات محمية لغير العميل.</li>
-      <li>يُمنع توليد صور لأشخاص حقيقيين دون موافقتهم المكتوبة.</li>
+      <li>يُمنع توليد صور أو فيديو لأشخاص حقيقيين دون موافقتهم المكتوبة.</li>
+      <li>يُمنع استنساخ صوت أي شخص دون موافقته المكتوبة، ويُمنع تقليد أصوات المشاهير.</li>
+      <li>يُمنع تقليد ألحان أو أغانٍ محمية، ويجب أن تمنح أداة الموسيقى حقوق الاستخدام التجاري.</li>
+      <li>الفيديو الفائز يُسلَّم بأعلى دقة متاحة، مع مسارات الصوت والموسيقى منفصلة عند الطلب.</li>
       <li>يجب أن تسمح رخصة الأداة بالاستخدام التجاري ونقل الحقوق.</li>
       <li>المشاركات المنسوخة أو المعدّلة من أعمال الآخرين تُزال ويُوقف الحساب.</li>
       <li>يحق للعميل طلب ملف المصدر والبرومبت والبذرة (seed) للعمل الفائز.</li>
@@ -266,19 +360,24 @@ export function how() {
 
 // ---------------------------------------------------------------- contests browse
 export function contestsPage(q) {
-  const list = S.contests({ q: q.q || "", cat: q.cat || "", st: q.st || "", sort: q.sort || "new" });
+  const list = S.contests({ q: q.q || "", cat: q.cat || "", st: q.st || "", sort: q.sort || "new", media: q.m || "" });
+  const cats = S.CATEGORIES.filter((c) => !q.m || c.media === q.m);
   return html`<section class="page-head"><div class="wrap"><h1>المسابقات</h1><p class="lead">اختر مسابقة، اقرأ الموجز، وقدّم أفضل ما لديك.</p></div></section>
   <section class="sec tight"><div class="wrap">
     <form class="filters" data-form="filter-contests">
       <input type="search" name="q" value="${q.q || ""}" placeholder="ابحث بالعنوان أو العلامة…" aria-label="بحث">
       <select name="st" aria-label="الحالة"><option value="">كل الحالات</option>${Object.entries(STATUS).map(([k, v]) => html`<option value="${k}" ${q.st === k ? raw("selected") : ""}>${v.t}</option>`)}</select>
       <select name="sort" aria-label="الترتيب">${[["new", "الأحدث"], ["prize", "الجائزة الأعلى"], ["ending", "تنتهي قريبًا"], ["entries", "الأكثر مشاركة"]].map(([k, v]) => html`<option value="${k}" ${(q.sort || "new") === k ? raw("selected") : ""}>${v}</option>`)}</select>
-      <input type="hidden" name="cat" value="${q.cat || ""}">
+      <input type="hidden" name="cat" value="${q.cat || ""}"><input type="hidden" name="m" value="${q.m || ""}">
       <button class="btn primary sm">تطبيق</button>
     </form>
+    <div class="mtabs" role="tablist">
+      <a role="tab" class="${!q.m ? "on" : ""}" href="${qs("#/contests", { ...q, m: "", cat: "" })}">الكل</a>
+      ${Object.values(S.MEDIA).map((m) => html`<a role="tab" class="${q.m === m.id ? "on" : ""}" href="${qs("#/contests", { ...q, m: m.id, cat: "" })}">${icon(mediaIcon(m.id))} ${m.name}</a>`)}
+    </div>
     <div class="chips scroll">
-      <a class="chip ${!q.cat ? "on" : ""}" href="${qs("#/contests", { ...q, cat: "" })}">الكل</a>
-      ${S.CATEGORIES.map((c) => html`<a class="chip ${q.cat === c.id ? "on" : ""}" href="${qs("#/contests", { ...q, cat: c.id })}">${c.icon} ${c.name}</a>`)}
+      <a class="chip ${!q.cat ? "on" : ""}" href="${qs("#/contests", { ...q, cat: "" })}">كل التصنيفات</a>
+      ${cats.map((c) => html`<a class="chip ${q.cat === c.id ? "on" : ""}" href="${qs("#/contests", { ...q, cat: c.id })}">${c.icon} ${c.name}</a>`)}
     </div>
     ${list.length ? html`<div class="grid3">${list.map(contestCard)}</div>` : empty("لا توجد مسابقات مطابقة", "جرّب تصنيفًا أو حالة مختلفة.")}
   </div></section>`;
@@ -316,7 +415,7 @@ export function contestPage(id, q, me) {
   return html`<section class="chead"><div class="wrap">
     <a class="crumb" href="#/contests">${icon("arrow")} كل المسابقات</a>
     <div class="chead-in">
-      <img class="chead-img" src="${imgSrc(winner ? winner.image : c.cover)}" alt="">
+      <div class="chead-img">${mediaThumb(winner || { media: S.mediaOf(c), image: c.cover, id: c.id, script: c.category === "voice" ? "1" : "" })}</div>
       <div class="chead-main">
         <div class="chead-tags">${statusBadge(c)}<span class="badge">${S.category(c.category).icon} ${S.category(c.category).name}</span>
           ${c.guaranteed ? html`<span class="badge green">${icon("shield")} جائزة مضمونة</span>` : ""}
@@ -327,7 +426,7 @@ export function contestPage(id, q, me) {
         <div class="muted">${avatar(client, "xs")} ${c.brand} · نُشرت ${timeAgo(c.createdAt)}</div>
         <div class="chead-stats">
           <div><b class="prize">${money(c.prize)}</b><span>الجائزة</span></div>
-          <div><b>${num(all.length)}</b><span>تصميم</span></div>
+          <div><b>${num(all.length)}</b><span>مشاركة</span></div>
           <div><b>${num(artistsCount)}</b><span>فنان</span></div>
           <div><b>${st === "open" ? timeLeft(c.deadline).replace("متبقٍ ", "") : "—"}</b><span>${st === "open" ? "متبقٍ" : STATUS[st].t}</span></div>
         </div>
@@ -338,18 +437,27 @@ export function contestPage(id, q, me) {
   <section class="sec tight"><div class="wrap cbody">
     <div class="cmain">
       <div class="tabs" role="tablist">
-        <a role="tab" class="${tab === "entries" ? "on" : ""}" href="${qs(base, { tab: "entries" })}">التصاميم <span class="count">${num(all.length)}</span></a>
+        <a role="tab" class="${tab === "entries" ? "on" : ""}" href="${qs(base, { tab: "entries" })}">المشاركات <span class="count">${num(all.length)}</span></a>
         <a role="tab" class="${tab === "brief" ? "on" : ""}" href="${qs(base, { tab: "brief" })}">الموجز</a>
       </div>
       ${tab === "brief" ? brief(c, owner && st === "open") : html`
         ${owner ? html`<div class="chips">${[["all", "الكل"], ["finalists", `القائمة النهائية (${c.finalists.length})`], ["rated", "المقيّمة"], ["eliminated", "المستبعدة"]].map(([k, v]) => html`<a class="chip ${filter === k ? "on" : ""}" href="${qs(base, { tab: "entries", f: k === "all" ? "" : k })}">${v}</a>`)}</div>` : ""}
-        ${c.blind && st !== "completed" && !owner ? html`<div class="note">${icon("lock")} مسابقة سرية: تصاميم الفنانين الآخرين مخفية حتى نهاية المسابقة.${me?.role === "artist" ? " تظهر لك مشاركاتك فقط." : ""}</div>` : ""}
+        ${c.blind && st !== "completed" && !owner ? html`<div class="note">${icon("lock")} مسابقة سرية: أعمال الفنانين الآخرين مخفية حتى نهاية المسابقة.${me?.role === "artist" ? " تظهر لك مشاركاتك فقط." : ""}</div>` : ""}
         ${entries.length ? html`<div class="egrid">${entries.map((e) => entryCard(e, c, me))}</div>`
-          : empty(all.length ? "لا توجد تصاميم في هذا العرض" : "لا توجد مشاركات بعد", st === "open" ? "كن أول من يشارك في هذه المسابقة!" : "")}
+          : empty(all.length ? "لا توجد مشاركات في هذا العرض" : "لا توجد مشاركات بعد", st === "open" ? "كن أول من يشارك في هذه المسابقة!" : "")}
       `}
     </div>
     <aside class="cside">${sidebar(c, me, owner, st)}</aside>
   </div></section>`;
+}
+
+function specRows(c) {
+  const fields = S.specFields(c.category).filter((f) => c.specs?.[f.k]);
+  if (!fields.length) return "";
+  const short = fields.filter((f) => f.k !== "script");
+  const script = fields.find((f) => f.k === "script");
+  return html`${short.length ? html`<div class="brief-row"><h4>${icon(mediaIcon(S.mediaOf(c)))} المواصفات</h4><div class="spec-tags">${short.map((f) => html`<span><small>${f.label}</small><b>${S.specValueLabel(f, c.specs[f.k])}</b></span>`)}</div></div>` : ""}
+    ${script ? html`<div class="brief-row"><h4>${icon("doc")} ${script.label}</h4><blockquote class="script">${c.specs.script}</blockquote></div>` : ""}`;
 }
 
 function brief(c, editable) {
@@ -357,15 +465,17 @@ function brief(c, editable) {
   return html`<div class="card pad brief">
     ${editable ? html`<div class="brief-edit"><button class="btn ghost sm" data-action="edit-brief" data-id="${c.id}">تعديل الموجز</button></div>` : ""}
     ${row("عن المشروع", c.brief)}
+    ${specRows(c)}
     ${row("الجمهور المستهدف", c.audience)}
     ${c.styles?.length ? html`<div class="brief-row"><h4>الأسلوب المفضّل</h4><div class="chips">${c.styles.map((s) => html`<span class="chip">${s}</span>`)}</div></div>` : ""}
     ${row("الألوان", c.colors)}
     ${row("أماكن الاستخدام", c.usage)}
     ${row("تجنّبوا", c.avoid)}
     <div class="brief-row"><h4>شروط المشاركة</h4><ul class="ticks">
-      <li>${icon("check")} الإفصاح عن أداة الذكاء الاصطناعي إلزامي لكل تصميم.</li>
+      <li>${icon("check")} نوع المشاركة: <b>${S.MEDIA[S.mediaOf(c)].noun}</b> — والإفصاح عن كل أدوات الذكاء الاصطناعي المستخدمة إلزامي.</li>
       <li>${icon("check")} حد أقصى ${S.MAX_ENTRIES_PER_ARTIST} مشاركات نشطة لكل فنان.</li>
-      <li>${icon("check")} الفائز يسلّم الملف بدقة عالية والبرومبت ويوقّع نقل الملكية.</li>
+      <li>${icon("check")} الفائز يسلّم الملف بأعلى جودة والبرومبت ويوقّع نقل الملكية.</li>
+      ${S.mediaOf(c) === "audio" || S.mediaOf(c) === "video" ? html`<li>${icon("check")} أي صوت بشري مستنسخ يجب أن يكون بموافقة مكتوبة من صاحبه.</li>` : ""}
     </ul></div>
   </div>`;
 }
@@ -378,21 +488,21 @@ function sidebar(c, me, owner, st) {
 
   if (st === "completed" && winner) {
     const wa = S.user(winner.artistId);
-    actions = html`<div class="winner-box"><img src="${imgSrc(winner.image)}" alt="">
+    actions = html`<div class="winner-box"><span class="wb-thumb">${mediaThumb(winner)}</span>
       <div><span class="badge gold">${icon("trophy")} الفائز</span><h4>${wa.name}</h4><a class="small" href="#/artists/${wa.id}">عرض الملف ←</a></div></div>
       ${me && (owner || me.id === winner.artistId) ? html`<button class="btn primary block" data-action="handover" data-id="${c.id}">${icon("download")} ملف التسليم ونقل الملكية</button>` : ""}`;
   } else if (st === "refunded") {
     actions = html`<p class="muted">أُلغيت المسابقة وأُعيد المبلغ للعميل.</p>`;
   } else if (owner) {
     actions = html`
-      ${st === "judging" ? html`<div class="note amber">${icon("clock")} انتهت فترة المشاركات — اختر الفائز من التصاميم.</div>` : ""}
-      <p class="small muted">لاختيار الفائز افتح أي تصميم واضغط «اختيار كفائز».</p>
+      ${st === "judging" ? html`<div class="note amber">${icon("clock")} انتهت فترة المشاركات — اختر الفائز من الأعمال المقدّمة.</div>` : ""}
+      <p class="small muted">لاختيار الفائز افتح أي مشاركة واضغط «اختيار كفائز».</p>
       ${st === "open" ? html`<button class="btn ghost block" data-action="close-submissions" data-id="${c.id}">إغلاق المشاركات الآن</button>` : ""}
       <button class="btn ghost block" data-action="extend" data-id="${c.id}">تمديد يومين</button>
       ${st === "judging" && !c.guaranteed ? html`<button class="btn danger-ghost block" data-action="refund" data-id="${c.id}">طلب استرداد المبلغ</button>` : ""}`;
   } else if (st === "open") {
     if (!me) actions = html`<a class="btn primary block" href="#/login?role=artist&next=${encodeURIComponent("#/contests/" + c.id)}">سجّل كفنان للمشاركة</a>`;
-    else if (me.role === "artist") actions = html`<button class="btn primary block" data-action="submit-entry" data-id="${c.id}" ${mineActive >= S.MAX_ENTRIES_PER_ARTIST ? raw("disabled") : ""}>${icon("upload")} شارك بتصميم</button>
+    else if (me.role === "artist") actions = html`<button class="btn primary block" data-action="submit-entry" data-id="${c.id}" ${mineActive >= S.MAX_ENTRIES_PER_ARTIST ? raw("disabled") : ""}>${icon("upload")} شارك بـ${S.MEDIA[S.mediaOf(c)].noun}</button>
       <p class="small muted center">مشاركاتك النشطة: ${mineActive}/${S.MAX_ENTRIES_PER_ARTIST}</p>`;
     else actions = html`<p class="small muted">المشاركة متاحة لحسابات الفنانين.</p>`;
   } else {
@@ -404,7 +514,8 @@ function sidebar(c, me, owner, st) {
     <ul class="side-list">
       <li>${icon("clock")} <span>${st === "open" ? "تنتهي المشاركات" : "انتهت المشاركات"}</span><b>${dateStr(c.deadline)}</b></li>
       <li>${icon("shield")} <span>الضمان</span><b>${c.guaranteed ? "جائزة مضمونة" : "قابلة للاسترداد"}</b></li>
-      <li>${icon(c.blind ? "lock" : "image")} <span>الرؤية</span><b>${c.blind ? "سرية" : "عامة"}</b></li>
+      <li>${icon(mediaIcon(S.mediaOf(c)))} <span>نوع العمل</span><b>${S.MEDIA[S.mediaOf(c)].noun}</b></li>
+      <li>${icon(c.blind ? "lock" : "users")} <span>الرؤية</span><b>${c.blind ? "سرية" : "عامة"}</b></li>
     </ul>
     ${actions}
   </div>`;
@@ -413,7 +524,7 @@ function sidebar(c, me, owner, st) {
 // ---------------------------------------------------------------- entry modal
 export function entryModal(entryId, me) {
   const e = S.entry(entryId);
-  if (!e || !S.canSeeEntry(e, me)) return html`<h2>التصميم غير متاح</h2><p class="muted">ربما سُحب أو أنّ المسابقة سرية.</p>`;
+  if (!e || !S.canSeeEntry(e, me)) return html`<h2>المشاركة غير متاحة</h2><p class="muted">ربما سُحب أو أنّ المسابقة سرية.</p>`;
   const c = S.contest(e.contestId);
   const st = S.status(c);
   const a = S.user(e.artistId);
@@ -429,36 +540,38 @@ export function entryModal(entryId, me) {
   const comments = canChat ? S.commentsOf(e.id) : [];
 
   return html`<div class="emodal">
-    <div class="emodal-img">
-      <img src="${imgSrc(e.image)}" alt="تصميم رقم ${e.number}">
-      ${prev ? html`<button class="nav-arrow next" data-action="open-entry" data-id="${prev.id}" aria-label="التصميم التالي">‹</button>` : ""}
-      ${next ? html`<button class="nav-arrow prev" data-action="open-entry" data-id="${next.id}" aria-label="التصميم السابق">›</button>` : ""}
+    <div class="emodal-img media-${e.media || "image"}">
+      ${mediaView(e, `مشاركة رقم ${e.number}`)}
+      ${prev ? html`<button class="nav-arrow next" data-action="open-entry" data-id="${prev.id}" aria-label="المشاركة التالية">‹</button>` : ""}
+      ${next ? html`<button class="nav-arrow prev" data-action="open-entry" data-id="${next.id}" aria-label="المشاركة السابقة">›</button>` : ""}
     </div>
     <div class="emodal-side">
       <div class="emodal-head">
         <span class="muted small">#${e.number} · ${timeAgo(e.createdAt)}</span>
-        <h2>${e.title || "تصميم بدون عنوان"}</h2>
+        <h2>${e.title || "بدون عنوان"}</h2>
         <a class="artist-line" href="#/artists/${a.id}">${avatar(a, "sm")} <span>${a.name}</span></a>
         <div class="chips">
-          <span class="chip">${icon("sparkle")} ${e.tool}</span>
+          <span class="chip">${icon(mediaIcon(e.media))} ${S.MEDIA[e.media || "image"].noun}${e.duration ? ` · ${fmtDur(e.duration)}` : ""}</span>
+          ${toolChips(e.tool)}
           ${win ? html`<span class="badge gold">${icon("trophy")} الفائز</span>` : ""}
           ${fin && !win ? html`<span class="badge violet">قائمة نهائية</span>` : ""}
           ${e.status === "eliminated" ? html`<span class="badge gray">مستبعد</span>` : ""}
         </div>
       </div>
       ${e.note ? html`<p class="emodal-note">${e.note}</p>` : ""}
+      ${e.script ? html`<details class="prompt"><summary>${icon("doc")} النص المقروء</summary><p class="script-text">${e.script}</p></details>` : ""}
       ${e.prompt && (isArtist || (owner && win)) ? html`<details class="prompt" ${owner && win ? raw("open") : ""}><summary>${icon("doc")} البرومبت ${isArtist && !win ? "(يظهر للعميل عند الفوز فقط)" : ""}</summary><code>${e.prompt}</code></details>` : ""}
 
       ${owner && live ? html`<div class="owner-tools">
         <div class="ot-row"><span>تقييمك:</span>${stars(e.rating, { interactive: true, entryId: e.id })}</div>
         <div class="ot-btns">
           <button class="btn ${fin ? "violet" : "ghost"} sm" data-action="finalist" data-id="${e.id}" ${e.status !== "active" ? raw("disabled") : ""}>${fin ? "✓ في القائمة النهائية" : "+ القائمة النهائية"}</button>
-          <button class="btn ghost sm" data-action="eliminate" data-id="${e.id}">${e.status === "eliminated" ? "إعادة التصميم" : "استبعاد"}</button>
+          <button class="btn ghost sm" data-action="eliminate" data-id="${e.id}">${e.status === "eliminated" ? "إعادة المشاركة" : "استبعاد"}</button>
         </div>
         ${e.status === "active" ? html`<button class="btn gold block" data-action="pick-winner" data-id="${e.id}">${icon("trophy")} اختيار كفائز — ${money(c.prize)}</button>` : ""}
       </div>` : !owner && e.rating ? html`<div class="ot-row">تقييم العميل: ${stars(e.rating)}</div>` : ""}
 
-      ${isArtist && live && !win ? html`<button class="linkbtn danger" data-action="withdraw" data-id="${e.id}">سحب هذا التصميم</button>` : ""}
+      ${isArtist && live && !win ? html`<button class="linkbtn danger" data-action="withdraw" data-id="${e.id}">سحب هذه المشاركة</button>` : ""}
       ${me?.role === "admin" && e.status !== "withdrawn" ? html`<button class="linkbtn danger" data-action="admin-remove" data-id="${e.id}">${icon("flag")} إزالة (مخالفة)</button>` : ""}
 
       ${canChat ? html`<div class="thread">
@@ -484,8 +597,8 @@ export function pickWinnerModal(entryId) {
   const a = S.user(e.artistId);
   return html`<h2>${icon("trophy")} تأكيد اختيار الفائز</h2>
   <div class="confirm-win"><img src="${imgSrc(e.image)}" alt=""><div>
-    <p>التصميم <b>#${e.number}</b> للفنان <b>${a.name}</b></p>
-    <p class="muted small">سيُحرَّر مبلغ الضمان ويُحوَّل <b>${money(c.prize)}</b> للفنان، وتنتقل إليك ملكية التصميم كاملة. لا يمكن التراجع.</p>
+    <p>المشاركة <b>#${e.number}</b> (${S.MEDIA[e.media || "image"].noun}) للفنان <b>${a.name}</b></p>
+    <p class="muted small">سيُحرَّر مبلغ الضمان ويُحوَّل <b>${money(c.prize)}</b> للفنان، وتنتقل إليك ملكية العمل كاملة. لا يمكن التراجع.</p>
   </div></div>
   <form data-form="pick-winner" data-id="${e.id}" class="form">
     <label>قيّم تجربتك مع الفنان</label>
@@ -496,26 +609,35 @@ export function pickWinnerModal(entryId) {
   </form>`;
 }
 
-export function submitModal(contestId, preview) {
+export function submitModal(contestId, pending) {
   const c = S.contest(contestId);
+  const m = S.mediaOf(c);
+  const M = S.MEDIA[m];
   return html`<h2>شارك في «${c.title}»</h2>
+  <p class="muted small">${icon(mediaIcon(m))} هذه المسابقة تستقبل <b>${M.noun}</b>${c.specs?.duration ? html` · المدة المطلوبة ${S.specValueLabel(S.specFields(c.category)[0], c.specs.duration)}` : ""}${c.specs?.aspect ? ` · ${c.specs.aspect}` : ""}</p>
   <form class="form" data-form="submit-entry" data-id="${c.id}">
-    <div class="drop ${preview ? "has" : ""}" data-drop>
-      ${preview ? html`<img src="${imgSrc(preview)}" alt="معاينة">` : html`<div class="drop-empty">${icon("upload")}<b>اسحب الصورة هنا أو اضغط للاختيار</b><span class="muted small">PNG / JPG / WEBP — حتى 15MB</span></div>`}
-      <input type="file" accept="image/*" data-change="entry-file" aria-label="ملف التصميم">
-    </div>
-    <button type="button" class="linkbtn" data-action="demo-art">${icon("sparkle")} لا تملك صورة؟ ولّد عيّنة تجريبية</button>
-    <div class="row2">
-      <div><label for="et">عنوان التصميم</label><input id="et" name="title" maxlength="80" placeholder="مثال: نخلة من حبّة بن"></div>
-      <div><label for="etool">أداة الذكاء الاصطناعي *</label><select id="etool" name="tool" required><option value="">اختر…</option>${S.AI_TOOLS.map((t) => html`<option>${t}</option>`)}</select></div>
-    </div>
+    ${dropZone("entry-file", M, pending)}
+    <button type="button" class="linkbtn" data-action="demo-art">${icon("sparkle")} لا تملك ملفًا الآن؟ ولّد عيّنة تجريبية</button>
+    <label for="et">عنوان المشاركة</label><input id="et" name="title" maxlength="80" placeholder="${m === "video" ? "مثال: صباح الرياض" : m === "audio" ? "مثال: نبرة دافئة" : "مثال: نخلة من حبّة بن"}">
+    <label>الأدوات المستخدمة * <span class="muted small">— اختر كل ما استخدمته</span></label>
+    ${toolPicker("tool", S.toolsFor(m), [], m)}
     <label for="enote">شرح الفكرة للعميل</label>
-    <textarea id="enote" name="note" rows="2" maxlength="500" placeholder="ما الفكرة وراء التصميم؟"></textarea>
+    <textarea id="enote" name="note" rows="2" maxlength="500" placeholder="ما الفكرة؟ ${m === "video" ? "ما القصة والمشاهد؟" : m === "audio" ? "ما الإحساس والإلقاء؟" : ""}"></textarea>
     <label for="eprompt">البرومبت <span class="muted small">— خاص، يُسلَّم للعميل فقط إن فزت</span></label>
-    <textarea id="eprompt" name="prompt" rows="2" maxlength="2000" dir="ltr" placeholder="minimal logo, …"></textarea>
-    <label class="check"><input type="checkbox" name="agree" value="1" required> <span>أُقرّ بأن العمل من إنتاجي، ولا ينتهك حقوق أحد، وأن رخصة الأداة تسمح بالاستخدام التجاري ونقل الملكية للعميل.</span></label>
-    <div class="form-actions"><button class="btn primary">إرسال التصميم</button><button type="button" class="btn ghost" data-action="close-modal">إلغاء</button></div>
+    <textarea id="eprompt" name="prompt" rows="2" maxlength="2000" dir="ltr" placeholder="${m === "audio" ? "warm saudi male voice, friendly…" : m === "video" ? "cinematic shot of …" : "minimal logo, …"}"></textarea>
+    <label class="check"><input type="checkbox" name="agree" value="1" required> <span>أُقرّ بأن العمل من إنتاجي، ولا ينتهك حقوق أحد${m !== "image" ? "، وأن أي صوت أو وجه بشري فيه بموافقة مكتوبة من صاحبه" : ""}، وأن رخص الأدوات تسمح بالاستخدام التجاري ونقل الملكية للعميل.</span></label>
+    <div class="form-actions"><button class="btn primary">إرسال المشاركة</button><button type="button" class="btn ghost" data-action="close-modal">إلغاء</button></div>
   </form>`;
+}
+
+/** Upload zone with preview; the file input covers the zone only while it's empty. */
+function dropZone(change, M, pending) {
+  return html`<div class="drop ${pending ? "has" : ""}" data-drop>
+    ${pending ? html`<div class="drop-preview">${mediaView(pending, "معاينة")}</div>
+      <label class="btn ghost sm drop-change">${icon("upload")} تغيير الملف<input type="file" accept="${M.accept}" data-change="${change}" hidden></label>`
+      : html`<div class="drop-empty">${icon("upload")}<b>اسحب الملف هنا أو اضغط للاختيار</b><span class="muted small">${M.hint}</span></div>
+      <input type="file" accept="${M.accept}" data-change="${change}" aria-label="اختيار ملف">`}
+  </div>`;
 }
 
 export function editBriefModal(c) {
@@ -525,6 +647,7 @@ export function editBriefModal(c) {
     <label for="bc">الألوان</label><input id="bc" name="colors" value="${c.colors}">
     <label for="bu">أماكن الاستخدام</label><input id="bu" name="usage" value="${c.usage}">
     <label for="bv">تجنّبوا</label><input id="bv" name="avoid" value="${c.avoid}">
+    ${specInputs(c.category, c.specs || {})}
     <p class="muted small">سيُبلَّغ كل الفنانين المشاركين بالتحديث.</p>
     <div class="form-actions"><button class="btn primary">حفظ</button><button type="button" class="btn ghost" data-action="close-modal">إلغاء</button></div>
   </form>`;
@@ -536,10 +659,11 @@ export function handoverModal(c) {
   const client = S.user(c.clientId);
   return html`<h2>${icon("doc")} ملف التسليم</h2>
   <div class="handover">
-    <img src="${imgSrc(e.image)}" alt="التصميم الفائز">
+    <div class="handover-media media-${e.media || "image"}">${mediaView(e, "العمل الفائز")}</div>
     <div>
       <ul class="side-list">
         <li><span>المسابقة</span><b>${c.title}</b></li>
+        <li><span>النوع</span><b>${S.MEDIA[e.media || "image"].noun}${e.duration ? ` · ${fmtDur(e.duration)}` : ""}</b></li>
         <li><span>الفنان</span><b>${a.name}</b></li>
         <li><span>العميل</span><b>${c.brand} (${client.name})</b></li>
         <li><span>الأداة</span><b>${e.tool}</b></li>
@@ -547,7 +671,7 @@ export function handoverModal(c) {
       </ul>
       ${e.prompt ? html`<details class="prompt" open><summary>البرومبت</summary><code>${e.prompt}</code></details>` : html`<p class="muted small">لم يُرفق برومبت.</p>`}
       <div class="form-actions">
-        <button class="btn primary" data-action="download-entry" data-id="${e.id}">${icon("download")} تنزيل التصميم</button>
+        <button class="btn primary" data-action="download-entry" data-id="${e.id}">${icon("download")} تنزيل ${S.MEDIA[e.media || "image"].noun}</button>
         <button class="btn ghost" data-action="download-license" data-id="${c.id}">${icon("doc")} شهادة نقل الملكية</button>
       </div>
     </div>
@@ -566,12 +690,13 @@ export function licenseText(c) {
 المُتنازِل (الفنان): ${a.name} <${a.email}>
 المُتنازَل له (العميل): ${c.brand} — ممثَّلًا بـ ${client.name} <${client.email}>
 
-العمل: التصميم رقم #${e.number}${e.title ? ` «${e.title}»` : ""} المقدَّم في مسابقة «${c.title}».
-أداة الإنتاج المُفصَح عنها: ${e.tool}
+العمل: ${S.MEDIA[e.media || "image"].noun} — المشاركة رقم #${e.number}${e.title ? ` «${e.title}»` : ""}${e.duration ? ` (المدة ${fmtDur(e.duration)})` : ""} المقدَّمة في مسابقة «${c.title}».
+أدوات الإنتاج المُفصَح عنها: ${e.tool}
 
 بموجب هذه الشهادة ومقابل مبلغ ${c.prize} ر.س المدفوع عبر منصة مَرسم، ينقل الفنان إلى العميل
 جميع حقوق الملكية الفكرية والاستخدام التجاري الحصرية للعمل المذكور، في جميع الوسائط وبلا قيد زمني أو جغرافي،
-ويقرّ الفنان بأن العمل أصلي، وأن رخصة الأداة المستخدمة تسمح بالاستخدام التجاري ونقل الحقوق،
+ويقرّ الفنان بأن العمل أصلي، وأن رخص الأدوات المستخدمة تسمح بالاستخدام التجاري ونقل الحقوق،
+وأن أي صوت أو صورة لشخص حقيقي في العمل مستخدمة بموافقته المكتوبة،
 وأنه لن يعيد بيع العمل أو استخدامه إلا في ملف أعماله الشخصي ما لم تكن المسابقة سرية.
 
 * وثيقة مولَّدة من النموذج التجريبي — ليست مستشارًا قانونيًا. راجع محاميًا قبل الاعتماد عليها.
@@ -591,12 +716,12 @@ export function launchPage(step, draft, me) {
   const bar = html`<ol class="wizard-bar">${labels.map((l, i) => html`<li class="${i + 1 === step ? "on" : i + 1 < step ? "done" : ""}"><span>${i + 1}</span>${l}</li>`)}</ol>`;
   let body;
   if (step === 1) {
-    body = html`<form data-form="wizard" data-step="1"><h2>ماذا تريد أن يصمّم الفنانون؟</h2>
-      <div class="cats pick">${S.CATEGORIES.map((c) => html`<label class="cat ${draft.category === c.id ? "selected" : ""}"><input type="radio" name="category" value="${c.id}" ${draft.category === c.id ? raw("checked") : ""} required><span class="cat-ic">${c.icon}</span><b>${c.name}</b><span class="muted small">${c.desc}</span></label>`)}</div>
+    body = html`<form data-form="wizard" data-step="1"><h2>ماذا تريد أن يصنع المبدعون؟</h2>
+      <div class="pick">${categoryGroups((c) => html`<label class="cat ${draft.category === c.id ? "selected" : ""}"><input type="radio" name="category" value="${c.id}" ${draft.category === c.id ? raw("checked") : ""} required><span class="cat-ic">${c.icon}</span><b>${c.name}</b><span class="muted small">${c.desc}</span></label>`)}</div>
       <div class="form-actions end"><button class="btn primary">التالي ←</button></div></form>`;
   } else if (step === 2) {
-    body = html`<form class="form" data-form="wizard" data-step="2"><h2>اكتب الموجز</h2>
-      <p class="muted">كلما كان الموجز أوضح، كانت التصاميم أقرب لما تريد.</p>
+    body = html`<form class="form" data-form="wizard" data-step="2"><h2>اكتب الموجز <span class="badge">${S.category(draft.category).icon} ${S.category(draft.category).name}</span></h2>
+      <p class="muted">كلما كان الموجز أوضح، كانت الأعمال أقرب لما تريد.</p>
       <div class="row2">
         <div><label for="wt">عنوان المسابقة *</label><input id="wt" name="title" required minlength="6" maxlength="90" value="${draft.title || ""}" placeholder="مثال: شعار لمقهى مختص في الرياض"></div>
         <div><label for="wbr">اسم العلامة</label><input id="wbr" name="brand" maxlength="60" value="${draft.brand || me.company || ""}"></div>
@@ -611,10 +736,12 @@ export function launchPage(step, draft, me) {
         <div><label for="wu">أماكن الاستخدام</label><input id="wu" name="usage" value="${draft.usage || ""}" placeholder="مثال: أكواب، تطبيق، لوحات"></div>
       </div>
       <label for="wv">ما الذي يجب تجنّبه؟</label><input id="wv" name="avoid" value="${draft.avoid || ""}">
+      ${specInputs(draft.category, draft.specs || {})}
       <div class="form-actions spread"><a class="btn ghost" href="#/launch?step=1">→ رجوع</a><button class="btn primary">التالي ←</button></div></form>`;
   } else if (step === 3) {
     body = html`<form class="form" data-form="wizard" data-step="3"><h2>اختر الباقة</h2>
-      ${packages(true, draft.package || "silver")}
+      ${packages(true, draft.package || "silver", draft.category)}
+      <p class="muted small">${icon(mediaIcon(S.category(draft.category).media))} الأسعار محسوبة لتصنيف «${S.category(draft.category).name}».</p>
       <h3>خيارات المسابقة</h3>
       <div class="opts">
         <label class="opt"><input type="checkbox" name="guaranteed" value="1" ${draft.guaranteed ? raw("checked") : ""}><div><b>${icon("shield")} جائزة مضمونة <span class="muted small">مجانًا</span></b><span class="muted small">تتعهد باختيار فائز — تجذب ضعف الفنانين تقريبًا، لكن تتنازل عن حق الاسترداد.</span></div></label>
@@ -626,8 +753,10 @@ export function launchPage(step, draft, me) {
       <div class="form-actions spread"><a class="btn ghost" href="#/launch?step=2">→ رجوع</a><button class="btn primary">التالي ←</button></div></form>`;
   } else {
     const p = S.pkg(draft.package);
+    const pp = S.pkgPrice(p.id, draft.category);
     const extras = (draft.blind ? 150 : 0) + (draft.featured ? 200 : 0);
-    const total = p.price + extras;
+    const total = pp.price + extras;
+    const specsShown = S.specFields(draft.category).filter((f) => draft.specs?.[f.k] && f.k !== "script");
     body = html`<div class="review"><h2>راجع وادفع</h2>
       <div class="two-col">
         <div class="card pad">
@@ -635,16 +764,19 @@ export function launchPage(step, draft, me) {
           <h3>${draft.title}</h3>
           <p>${draft.brief}</p>
           ${draft.styles?.length ? html`<div class="chips">${[].concat(draft.styles).map((s) => html`<span class="chip">${s}</span>`)}</div>` : ""}
+          ${specsShown.length ? html`<div class="spec-tags">${specsShown.map((f) => html`<span><small>${f.label}</small><b>${S.specValueLabel(f, draft.specs[f.k])}</b></span>`)}</div>` : ""}
+          ${draft.specs?.script ? html`<blockquote class="script">${draft.specs.script}</blockquote>` : ""}
           <a class="linkbtn" href="#/launch?step=2">تعديل الموجز</a>
         </div>
         <div class="card pad">
           <ul class="side-list">
-            <li><span>باقة ${p.name}</span><b>${money(p.price)}</b></li>
+            <li><span>باقة ${p.name} — ${S.category(draft.category).name}</span><b>${money(pp.price)}</b></li>
+            <li><span>جائزة الفائز</span><b>${money(pp.prize)}</b></li>
             ${draft.blind ? html`<li><span>مسابقة سرية</span><b>${money(150)}</b></li>` : ""}
             ${draft.featured ? html`<li><span>ظهور مميّز</span><b>${money(200)}</b></li>` : ""}
             <li class="total"><span>الإجمالي</span><b>${money(total)}</b></li>
           </ul>
-          <p class="small muted">${icon("shield")} المبلغ يبقى في حساب الضمان ولا يُحوَّل للفنان إلا عند اختيارك الفائز.${draft.guaranteed ? "" : " وإن لم يعجبك أي تصميم تسترده كاملًا."}</p>
+          <p class="small muted">${icon("shield")} المبلغ يبقى في حساب الضمان ولا يُحوَّل للفنان إلا عند اختيارك الفائز.${draft.guaranteed ? "" : " وإن لم يعجبك أي عمل تسترده كاملًا."}</p>
           <form data-form="launch"><button class="btn primary block lg">ادفع وأطلق المسابقة</button></form>
           <p class="tiny muted center">الدفع وهمي في النسخة التجريبية — في الإنتاج: مدى، Apple Pay، فيزا عبر بوابة دفع محلية، مع فاتورة ضريبية إلكترونية.</p>
         </div>
@@ -657,16 +789,18 @@ export function launchPage(step, draft, me) {
 // ---------------------------------------------------------------- artists
 export function artistsPage(q) {
   let list = S.artists();
+  if (q.m) list = list.filter((a) => a.tools.some((t) => S.TOOLS[q.m]?.includes(t)) || S.portfolioOf(a.id).some((e) => (e.media || "image") === q.m));
   if (q.tool) list = list.filter((a) => a.tools.includes(q.tool));
   if (q.q) list = list.filter((a) => (a.name + a.bio).includes(q.q));
   const withStats = list.map((a) => ({ a, s: S.artistStats(a.id) }));
   const sort = q.sort || "rating";
   withStats.sort((x, y) => (sort === "wins" ? y.s.wins - x.s.wins : sort === "new" ? y.a.joinedAt - x.a.joinedAt : y.s.rating - x.s.rating));
-  return html`<section class="page-head"><div class="wrap"><h1>فنانو الذكاء الاصطناعي</h1><p class="lead">تصفّح الملفات، شاهد الأعمال الفائزة، ووظّف فنانًا مباشرةً.</p></div></section>
+  return html`<section class="page-head"><div class="wrap"><h1>مبدعو الذكاء الاصطناعي</h1><p class="lead">مصمّمون، صنّاع أفلام، معلّقون صوتيون ومؤلفو موسيقى — تصفّح الأعمال ووظّف مباشرةً.</p></div></section>
   <section class="sec tight"><div class="wrap">
     <form class="filters" data-form="filter-artists">
       <input type="search" name="q" value="${q.q || ""}" placeholder="ابحث بالاسم أو التخصص…" aria-label="بحث">
-      <select name="tool" aria-label="الأداة"><option value="">كل الأدوات</option>${S.AI_TOOLS.map((t) => html`<option ${q.tool === t ? raw("selected") : ""}>${t}</option>`)}</select>
+      <select name="m" aria-label="التخصص"><option value="">كل التخصصات</option>${Object.values(S.MEDIA).map((m) => html`<option value="${m.id}" ${q.m === m.id ? raw("selected") : ""}>${m.name}</option>`)}</select>
+      <select name="tool" aria-label="الأداة"><option value="">كل الأدوات</option>${Object.entries(S.TOOLS).map(([m, ts]) => html`<optgroup label="${S.MEDIA[m].name}">${ts.map((t) => html`<option ${q.tool === t ? raw("selected") : ""}>${t}</option>`)}</optgroup>`)}</select>
       <select name="sort" aria-label="الترتيب">${[["rating", "الأعلى تقييمًا"], ["wins", "الأكثر فوزًا"], ["new", "الأحدث"]].map(([k, v]) => html`<option value="${k}" ${sort === k ? raw("selected") : ""}>${v}</option>`)}</select>
       <button class="btn primary sm">تطبيق</button>
     </form>
@@ -738,10 +872,10 @@ export function projectPage(id, me, deliverPreview) {
   let actions = "";
   if (isArtist && h.status === "requested") actions = html`<div class="form-actions"><button class="btn primary" data-action="hire-accept" data-id="${h.id}">قبول المشروع</button><button class="btn ghost" data-action="hire-decline" data-id="${h.id}">اعتذار</button></div>`;
   else if (isArtist && ["active", "revision"].includes(h.status)) actions = html`<form class="form card pad" data-form="deliver" data-id="${h.id}"><h3>${icon("upload")} تسليم العمل</h3>
-      <div class="drop ${deliverPreview ? "has" : ""}" data-drop>${deliverPreview ? html`<img src="${imgSrc(deliverPreview)}" alt="">` : html`<div class="drop-empty">${icon("upload")}<b>ارفع الملف النهائي</b></div>`}<input type="file" accept="image/*" data-change="deliver-file" aria-label="ملف التسليم"></div>
+      ${dropZone("deliver-file", { accept: "image/*,video/*,audio/*", hint: "صورة أو فيديو أو ملف صوتي" }, deliverPreview)}
       <button type="button" class="linkbtn" data-action="demo-art-deliver">${icon("sparkle")} عيّنة تجريبية</button>
-      <div class="row2"><div><label for="dt">الأداة</label><select id="dt" name="tool">${a.tools.concat(S.AI_TOOLS.filter((t) => !a.tools.includes(t))).map((t) => html`<option>${t}</option>`)}</select></div>
-      <div><label for="dp">البرومبت</label><input id="dp" name="prompt" dir="ltr"></div></div>
+      <label>الأدوات المستخدمة</label>${toolPicker("tool", S.AI_TOOLS, a.tools.slice(0, 1))}
+      <label for="dp">البرومبت</label><input id="dp" name="prompt" dir="ltr">
       <label for="dn">ملاحظة التسليم</label><textarea id="dn" name="note" rows="2"></textarea>
       <button class="btn primary">تسليم</button></form>`;
   else if (isClient && h.status === "delivered") actions = html`<div class="card pad"><h3>راجع التسليم</h3>
@@ -760,9 +894,9 @@ export function projectPage(id, me, deliverPreview) {
       <ol class="timeline">${["الطلب", "التنفيذ", "التسليم", "الاعتماد"].map((l, i) => html`<li class="${i <= idx && h.status !== "declined" ? "done" : ""}">${l}</li>`)}</ol>
       <h4>التفاصيل</h4><p>${h.brief}</p>
       ${h.delivery ? html`<h4>التسليم ${h.revisions ? html`<span class="muted small">(بعد ${h.revisions} تعديل)</span>` : ""}</h4>
-        <div class="handover"><img src="${imgSrc(h.delivery.image)}" alt="التسليم"><div>
+        <div class="handover"><div class="handover-media media-${h.delivery.media || "image"}">${mediaView(h.delivery, "التسليم")}</div><div>
           ${h.delivery.note ? html`<p>${h.delivery.note}</p>` : ""}
-          <ul class="side-list"><li><span>الأداة</span><b>${h.delivery.tool || "—"}</b></li><li><span>تاريخ التسليم</span><b>${dateStr(h.delivery.at)}</b></li></ul>
+          <ul class="side-list"><li><span>النوع</span><b>${S.MEDIA[h.delivery.media || "image"].noun}${h.delivery.duration ? ` · ${fmtDur(h.delivery.duration)}` : ""}</b></li><li><span>الأدوات</span><b>${h.delivery.tool || "—"}</b></li><li><span>تاريخ التسليم</span><b>${dateStr(h.delivery.at)}</b></li></ul>
           ${h.delivery.prompt && (isArtist || h.status === "approved") ? html`<details class="prompt"><summary>البرومبت</summary><code>${h.delivery.prompt}</code></details>` : ""}
           ${h.status === "approved" && (isClient || me.role === "admin") ? html`<button class="btn ghost sm" data-action="download-hire" data-id="${h.id}">${icon("download")} تنزيل</button>` : ""}
         </div></div>` : ""}
@@ -807,14 +941,14 @@ function clientDash(me) {
   <section class="sec tight"><div class="wrap">
     <div class="kpis cards">
       <div class="card"><b>${num(mine.filter((c) => S.status(c) === "open").length)}</b><span>مسابقة نشطة</span></div>
-      <div class="card"><b>${num(received)}</b><span>تصميم مستلم</span></div>
+      <div class="card"><b>${num(received)}</b><span>مشاركة مستلمة</span></div>
       <div class="card"><b>${money(spent)}</b><span>إجمالي الإنفاق</span></div>
       <div class="card"><b>${num(S.hiresOf(me.id).length)}</b><span>مشروع مباشر</span></div>
     </div>
     ${needs.length ? html`<div class="note amber">${icon("clock")} ${needs.length === 1 ? "مسابقة بانتظار" : `${needs.length} مسابقات بانتظار`} اختيار الفائز: ${needs.map((c, i) => html`${i ? "، " : ""}<a href="#/contests/${c.id}">${c.title}</a>`)}</div>` : ""}
     <div class="sec-head"><h2>مسابقاتي</h2><a class="btn primary sm" href="#/launch">+ مسابقة جديدة</a></div>
-    ${mine.length ? html`<div class="rows">${mine.map((c) => { const es = S.entriesOf(c.id); return html`<a class="row" href="#/contests/${c.id}"><img class="row-thumb" src="${imgSrc(c.winnerEntryId ? S.entry(c.winnerEntryId).image : c.cover)}" alt=""><div class="row-main"><b>${c.title}</b><span class="muted small">${money(c.prize)} · ${num(es.length)} تصميم · ${S.status(c) === "open" ? timeLeft(c.deadline) : dateStr(c.deadline)}</span></div>${statusBadge(c)}</a>`; })}</div>`
-      : empty("لم تطلق أي مسابقة بعد", "ابدأ بأول مسابقة واستقبل التصاميم خلال أيام.", html`<a class="btn primary" href="#/launch">أطلق مسابقة</a>`)}
+    ${mine.length ? html`<div class="rows">${mine.map((c) => { const es = S.entriesOf(c.id); return html`<a class="row" href="#/contests/${c.id}"><img class="row-thumb" src="${imgSrc(c.winnerEntryId ? S.entry(c.winnerEntryId).image : c.cover)}" alt=""><div class="row-main"><b>${c.title}</b><span class="muted small">${S.category(c.category).icon} ${money(c.prize)} · ${num(es.length)} مشاركة · ${S.status(c) === "open" ? timeLeft(c.deadline) : dateStr(c.deadline)}</span></div>${statusBadge(c)}</a>`; })}</div>`
+      : empty("لم تطلق أي مسابقة بعد", "ابدأ بأول مسابقة واستقبل الأعمال خلال أيام.", html`<a class="btn primary" href="#/launch">أطلق مسابقة</a>`)}
     <div class="two-col">
       <div><h2>المشاريع المباشرة</h2>${hireList(me)}</div>
       <div><h2>المعاملات</h2>${txTable(txs.slice(0, 8))}</div>
@@ -836,7 +970,7 @@ function artistDash(me) {
       <div class="card"><b>${st.rating ? st.rating.toFixed(1) : "—"}</b><span>التقييم (${st.reviews})</span></div>
     </div>
     <h2>مشاركاتي</h2>
-    ${mine.length ? html`<div class="rows">${mine.map(({ c, es }) => { const won = es.some((e) => e.id === c.winnerEntryId); const fin = es.filter((e) => c.finalists.includes(e.id)).length; return html`<a class="row" href="#/contests/${c.id}"><img class="row-thumb" src="${imgSrc(es[es.length - 1].image)}" alt=""><div class="row-main"><b>${c.title}</b><span class="muted small">${num(es.length)} تصميم${fin ? ` · ${fin} في القائمة النهائية` : ""} · أعلى تقييم ${Math.max(...es.map((e) => e.rating)) || "—"}</span></div>${won ? html`<span class="badge gold">${icon("trophy")} فزت</span>` : statusBadge(c)}</a>`; })}</div>`
+    ${mine.length ? html`<div class="rows">${mine.map(({ c, es }) => { const won = es.some((e) => e.id === c.winnerEntryId); const fin = es.filter((e) => c.finalists.includes(e.id)).length; return html`<a class="row" href="#/contests/${c.id}"><img class="row-thumb" src="${imgSrc(es[es.length - 1].image)}" alt=""><div class="row-main"><b>${c.title}</b><span class="muted small">${num(es.length)} مشاركة${fin ? ` · ${fin} في القائمة النهائية` : ""} · أعلى تقييم ${Math.max(...es.map((e) => e.rating)) || "—"}</span></div>${won ? html`<span class="badge gold">${icon("trophy")} فزت</span>` : statusBadge(c)}</a>`; })}</div>`
       : empty("لم تشارك في أي مسابقة بعد", "", html`<a class="btn primary" href="#/contests">تصفّح المسابقات</a>`)}
     ${openForMe.length ? html`<div class="sec-head"><h2>مسابقات قد تناسبك</h2><a class="linkbtn" href="#/contests?st=open">الكل ←</a></div><div class="grid3">${openForMe.map(contestCard)}</div>` : ""}
     <div class="two-col">
@@ -854,7 +988,7 @@ function artistDash(me) {
       <div class="row2"><div><label for="pn">الاسم</label><input id="pn" name="name" value="${me.name}" required></div><div><label for="pc">الدولة</label><input id="pc" name="country" value="${me.country}"></div></div>
       <label for="pb">نبذة</label><textarea id="pb" name="bio" rows="3">${me.bio}</textarea>
       <label>الأدوات التي تتقنها</label>
-      <div class="chips pickable">${S.AI_TOOLS.map((t) => html`<label class="chip"><input type="checkbox" name="tools" value="${t}" ${me.tools.includes(t) ? raw("checked") : ""}> ${t}</label>`)}</div>
+      ${toolPicker("tools", S.AI_TOOLS, me.tools)}
       <div class="form-actions"><button class="btn primary">حفظ الملف</button></div>
     </form>
   </div></section>`;
@@ -872,12 +1006,12 @@ function adminDash() {
       <div class="card"><b>${money(ps.refunds)}</b><span>مستردّات</span></div>
       <div class="card"><b>${num(ps.artists)} / ${num(ps.clients)}</b><span>فنانون / شركات</span></div>
       <div class="card"><b>${num(ps.open)} / ${num(ps.contests)}</b><span>مسابقات مفتوحة / الكل</span></div>
-      <div class="card"><b>${num(ps.entries)}</b><span>تصاميم</span></div>
+      <div class="card"><b>${num(ps.entries)}</b><span>مشاركات</span></div>
       <div class="card"><b>${num(ps.hires)}</b><span>مشاريع مباشرة</span></div>
     </div>
     <h2>المسابقات</h2>
-    <div class="table-wrap"><table class="table"><thead><tr><th>المسابقة</th><th>العميل</th><th>الحالة</th><th>التصاميم</th><th>المبلغ</th><th>العمولة</th></tr></thead><tbody>
-      ${all.map((c) => html`<tr><td><a href="#/contests/${c.id}">${c.title}</a></td><td>${c.brand}</td><td>${statusBadge(c)}</td><td class="num">${num(S.entriesOf(c.id).length)}</td><td class="num">${money(c.price)}</td><td class="num">${money(c.price - c.prize)}</td></tr>`)}
+    <div class="table-wrap"><table class="table"><thead><tr><th>المسابقة</th><th>النوع</th><th>العميل</th><th>الحالة</th><th>المشاركات</th><th>المبلغ</th><th>العمولة</th></tr></thead><tbody>
+      ${all.map((c) => html`<tr><td><a href="#/contests/${c.id}">${c.title}</a></td><td>${S.category(c.category).icon} ${S.MEDIA[S.mediaOf(c)].noun}</td><td>${c.brand}</td><td>${statusBadge(c)}</td><td class="num">${num(S.entriesOf(c.id).length)}</td><td class="num">${money(c.price)}</td><td class="num">${money(c.price - c.prize)}</td></tr>`)}
     </tbody></table></div>
     <h2>المستخدمون</h2>
     <div class="table-wrap"><table class="table"><thead><tr><th>الاسم</th><th>النوع</th><th>البريد</th><th>الرصيد</th><th>انضم</th></tr></thead><tbody>
@@ -899,7 +1033,7 @@ export function notificationsPage(me) {
 // ---------------------------------------------------------------- auth
 export function loginPage(q) {
   const role = q.role === "artist" ? "artist" : q.role === "client" ? "client" : "";
-  const group = (r, title) => html`<div class="acct-group"><h4>${title}</h4>${S.users().filter((u) => u.role === r).map((u) => html`<button class="acct" data-action="login-as" data-id="${u.id}">${avatar(u, "sm")}<span><b>${u.name}</b><span class="muted small">${u.company || (u.role === "artist" ? (u.tools || []).slice(0, 2).join("، ") : "إدارة المنصة")}</span></span></button>`)}</div>`;
+  const group = (r, title) => html`<div class="acct-group"><h4>${title}</h4>${S.users().filter((u) => u.role === r).map((u) => html`<button class="acct" data-action="login-as" data-id="${u.id}">${avatar(u, "sm")}<span><b>${u.name}</b><span class="muted small">${u.company || (u.role === "artist" ? specialties(u).map((m) => S.MEDIA[m].noun).join(" · ") + " — " + (u.tools || []).slice(0, 2).join("، ") : "إدارة المنصة")}</span></span></button>`)}</div>`;
   return html`<section class="sec"><div class="wrap two-col login">
     <div class="card pad">
       <h1>ادخل بحساب تجريبي</h1>
@@ -913,7 +1047,7 @@ export function loginPage(q) {
       <form class="form" data-form="register">
         <div class="seg">
           <label><input type="radio" name="role" value="client" ${role !== "artist" ? raw("checked") : ""}> <span>${icon("briefcase")} أنا شركة / عميل</span></label>
-          <label><input type="radio" name="role" value="artist" ${role === "artist" ? raw("checked") : ""}> <span>${icon("sparkle")} أنا فنان</span></label>
+          <label><input type="radio" name="role" value="artist" ${role === "artist" ? raw("checked") : ""}> <span>${icon("sparkle")} أنا مبدع / فنان</span></label>
         </div>
         <label for="rn">الاسم *</label><input id="rn" name="name" required minlength="2">
         <label for="re">البريد الإلكتروني *</label><input id="re" name="email" type="email" required dir="ltr">
@@ -921,7 +1055,7 @@ export function loginPage(q) {
         <div class="only-artist">
           <label for="rb">نبذة قصيرة</label><textarea id="rb" name="bio" rows="2"></textarea>
           <label>أدواتك</label>
-          <div class="chips pickable">${S.AI_TOOLS.slice(0, 8).map((t) => html`<label class="chip"><input type="checkbox" name="tools" value="${t}"> ${t}</label>`)}</div>
+          ${toolPicker("tools", S.AI_TOOLS.filter((t) => t !== "أخرى"))}
         </div>
         <input type="hidden" name="next" value="${q.next || ""}">
         <div class="form-actions"><button class="btn primary block">إنشاء الحساب</button></div>

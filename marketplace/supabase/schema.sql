@@ -12,6 +12,7 @@ create type contest_status as enum ('open', 'completed', 'refunded');      -- "j
 create type entry_status   as enum ('active', 'eliminated', 'withdrawn');
 create type hire_status    as enum ('requested', 'active', 'delivered', 'revision', 'approved', 'declined');
 create type tx_type        as enum ('escrow', 'release', 'refund', 'payout', 'withdrawal', 'fee');
+create type media_type     as enum ('image', 'video', 'audio');
 
 -- ------------------------------------------------------------------ tables
 create table profiles (
@@ -27,18 +28,35 @@ create table profiles (
   created_at  timestamptz not null default now()
 );
 
+-- categories drive what an entry must be (image / video / audio) and scale the package price
+create table categories (
+  id      text primary key,
+  media   media_type not null,
+  factor  numeric(4,2) not null default 1 check (factor > 0),
+  name    text not null
+);
+insert into categories (id, media, factor, name) values
+  ('logo', 'image', 1, 'شعار وهوية بصرية'), ('illustration', 'image', 1, 'رسم توضيحي'), ('product', 'image', 1, 'تصوير منتجات'),
+  ('character', 'image', 1, 'شخصيات وماسكوت'), ('poster', 'image', 1, 'بوسترات وأغلفة'), ('social', 'image', 1, 'منشورات سوشال'),
+  ('concept', 'image', 1, 'فن مفاهيمي وألعاب'),
+  ('film', 'video', 2, 'أفلام قصيرة'), ('ad', 'video', 1.6, 'إعلانات فيديو'), ('story', 'video', 1.6, 'قصص وأنيميشن'),
+  ('edu', 'video', 1.4, 'فيديو تعليمي'), ('reels', 'video', 1, 'ريلز وتيك توك'), ('motion', 'video', 1.3, 'موشن جرافيك'),
+  ('avatar', 'video', 1.2, 'متحدث افتراضي'),
+  ('voice', 'audio', 0.8, 'تعليق صوتي'), ('music', 'audio', 1, 'موسيقى وجنغل'), ('podcast', 'audio', 0.8, 'بودكاست وكتب صوتية');
+
 create table contests (
   id              uuid primary key default gen_random_uuid(),
   client_id       uuid not null references profiles(id),
   title           text not null check (char_length(title) >= 6),
   brand           text,
-  category        text not null,
+  category        text not null references categories(id),
   brief           text not null check (char_length(brief) >= 30),
   audience        text default '',
   styles          text[] not null default '{}',
   colors          text default '',
   usage           text default '',
   avoid           text default '',
+  specs           jsonb not null default '{}',   -- {duration, aspect, lang, gender, mood, script}
   package         text not null check (package in ('bronze', 'silver', 'gold', 'platinum')),
   prize           numeric(12,2) not null,
   price           numeric(12,2) not null,
@@ -59,7 +77,12 @@ create table entries (
   contest_id  uuid not null references contests(id) on delete cascade,
   artist_id   uuid not null references profiles(id),
   number      int not null default 0,  -- assigned by trigger
-  image_path  text not null,          -- storage path in bucket "entries"
+  media       media_type not null default 'image',
+  image_path  text not null,          -- image entry, or poster frame / cover for video & audio (bucket "entries")
+  media_path  text,                   -- video / audio file (bucket "entries"); required unless media = 'image'
+  duration_sec int check (duration_sec >= 0),
+  peaks       real[],                 -- audio waveform for cards
+  script      text default '',        -- text read in a voice-over entry
   title       text default '',
   tool        text not null,          -- mandatory AI-tool disclosure
   prompt      text default '',        -- private: artist + (client once winner)
@@ -67,7 +90,8 @@ create table entries (
   rating      smallint not null default 0 check (rating between 0 and 5),
   status      entry_status not null default 'active',
   created_at  timestamptz not null default now(),
-  unique (contest_id, number)
+  unique (contest_id, number),
+  check (media = 'image' or media_path is not null)
 );
 alter table contests add constraint contests_winner_fk foreign key (winner_entry_id) references entries(id);
 
@@ -90,7 +114,7 @@ create table hires (
   budget       numeric(12,2) not null check (budget >= 200),
   days         int not null default 5,
   status       hire_status not null default 'requested',
-  delivery     jsonb,                 -- {image_path, note, prompt, tool, at}
+  delivery     jsonb,                 -- {media, image_path, media_path, duration_sec, note, prompt, tool, at}
   revisions    int not null default 0,
   payment_ref  text,
   created_at   timestamptz not null default now(),
@@ -180,6 +204,10 @@ create policy entries_insert on entries for insert with check (
   and exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'artist')
   and exists (select 1 from contests c where c.id = contest_id and c.status = 'open' and c.deadline > now() and c.client_id <> auth.uid())
 );
+-- entry media must match the contest category (a voice-over contest only takes audio, etc.)
+create policy entries_media_matches on entries as restrictive for insert with check (
+  media = (select cat.media from contests c join categories cat on cat.id = c.category where c.id = contest_id)
+);
 -- A policy on entries can't query entries (Postgres: infinite recursion), so the per-artist limit and the
 -- sequential entry number live in a security-definer trigger instead.
 create or replace function entries_before_insert() returns trigger language plpgsql security definer set search_path = public as $$
@@ -204,9 +232,10 @@ create policy entries_update on entries for update using (
 -- which runs with the owner's rights, so it re-applies the entries_read visibility rule in its WHERE
 -- and reveals the prompt only to the artist, an admin, or the client once that entry has won.
 revoke select on entries from anon, authenticated;
-grant select (id, contest_id, artist_id, number, image_path, title, tool, note, rating, status, created_at) on entries to anon, authenticated;
+grant select (id, contest_id, artist_id, number, media, image_path, media_path, duration_sec, peaks, script, title, tool, note, rating, status, created_at) on entries to anon, authenticated;
 create or replace view entries_public as
-  select e.id, e.contest_id, e.artist_id, e.number, e.image_path, e.title, e.tool, e.note, e.rating, e.status, e.created_at,
+  select e.id, e.contest_id, e.artist_id, e.number, e.media, e.image_path, e.media_path, e.duration_sec, e.peaks, e.script,
+         e.title, e.tool, e.note, e.rating, e.status, e.created_at,
          case when e.artist_id = auth.uid() or is_admin() or (c.client_id = auth.uid() and c.winner_entry_id = e.id)
               then e.prompt end as prompt
   from entries e join contests c on c.id = e.contest_id
@@ -244,6 +273,8 @@ create policy comments_rw on comments for all using (
 
 create policy hires_read on hires for select using (auth.uid() in (client_id, artist_id) or is_admin());
 create policy reviews_read on reviews for select using (true);
+alter table categories enable row level security;
+create policy categories_read on categories for select using (true);
 create policy tx_read on transactions for select using (user_id = auth.uid() or is_admin());
 create policy notif_read on notifications for select using (user_id = auth.uid());
 create policy notif_update on notifications for update using (user_id = auth.uid()) with check (user_id = auth.uid());
@@ -253,18 +284,22 @@ create policy notif_update on notifications for update using (user_id = auth.uid
 -- launch_contest is called by the payment webhook (service role) after the gateway confirms the charge.
 create or replace function launch_contest(p_client uuid, p jsonb, p_payment_ref text) returns uuid
 language plpgsql security definer set search_path = public as $$
-declare v_id uuid; v_prize numeric; v_price numeric;
+declare v_id uuid; v_prize numeric; v_price numeric; v_factor numeric;
 begin
   if auth.role() <> 'service_role' then raise exception 'webhook only'; end if;
   select prize, price into v_prize, v_price from (values
     ('bronze', 900, 1100), ('silver', 1600, 1900), ('gold', 2600, 3000), ('platinum', 5000, 5600)
   ) as t(id, prize, price) where id = p->>'package';
-  v_price := v_price + case when (p->>'blind')::boolean then 150 else 0 end + case when (p->>'featured')::boolean then 200 else 0 end;
-  insert into contests (client_id, title, brand, category, brief, audience, styles, colors, usage, avoid, package, prize, price,
+  select factor into v_factor from categories where id = p->>'category';
+  if v_price is null or v_factor is null then raise exception 'unknown package or category'; end if;
+  -- same rounding as the app: nearest 50 SAR
+  v_prize := round(v_prize * v_factor / 50) * 50;
+  v_price := round(v_price * v_factor / 50) * 50 + case when (p->>'blind')::boolean then 150 else 0 end + case when (p->>'featured')::boolean then 200 else 0 end;
+  insert into contests (client_id, title, brand, category, brief, audience, styles, colors, usage, avoid, specs, package, prize, price,
                         guaranteed, blind, featured, deadline, payment_ref)
   values (p_client, p->>'title', p->>'brand', p->>'category', p->>'brief', coalesce(p->>'audience', ''),
           coalesce(array(select jsonb_array_elements_text(p->'styles')), '{}'), coalesce(p->>'colors', ''), coalesce(p->>'usage', ''),
-          coalesce(p->>'avoid', ''), p->>'package', v_prize, v_price, coalesce((p->>'guaranteed')::boolean, false),
+          coalesce(p->>'avoid', ''), coalesce(p->'specs', '{}'::jsonb), p->>'package', v_prize, v_price, coalesce((p->>'guaranteed')::boolean, false),
           coalesce((p->>'blind')::boolean, false), coalesce((p->>'featured')::boolean, false),
           now() + make_interval(days => least(14, greatest(3, coalesce((p->>'days')::int, 7)))), p_payment_ref)
   returning id into v_id;
@@ -325,6 +360,10 @@ end $$;
 -- ------------------------------------------------------------------ storage
 -- Bucket "entries" (private). Read through signed URLs generated by an edge function that
 -- re-checks the same blind-contest rule as entries_read; artists upload to entries/<uid>/<file>.
-insert into storage.buckets (id, name, public) values ('entries', 'entries', false) on conflict do nothing;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('entries', 'entries', false, 83886080,   -- 80 MB (video); images/audio are capped lower by the app
+        array['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime',
+              'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/ogg'])
+on conflict do nothing;
 create policy entries_upload on storage.objects for insert to authenticated
   with check (bucket_id = 'entries' and (storage.foldername(name))[1] = auth.uid()::text);
